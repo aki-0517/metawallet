@@ -34,7 +34,9 @@ export const web3auth = new Web3Auth({
   uiConfig: {
     appName: import.meta.env.VITE_APP_NAME || "Metawallet",
     appLogo: import.meta.env.VITE_APP_LOGO || "https://web3auth.io/images/w3a-L-Favicon-1.svg",
-    theme: "dark",
+    theme: {
+      primary: "#768729"
+    },
     primaryButtonProvider: "google",
   },
 });
@@ -73,8 +75,8 @@ export async function initializeWeb3Auth() {
         // Handle provider injection conflicts more gracefully
         try {
           // Store original ethereum provider before Web3Auth modifies it
-          if (!window._originalEthereum) {
-            window._originalEthereum = ethereum;
+          if (!(window as any)._originalEthereum) {
+            (window as any)._originalEthereum = ethereum;
           }
         } catch (providerError) {
           console.warn("Provider conflict detected, continuing with Web3Auth initialization");
@@ -113,6 +115,11 @@ export async function login(): Promise<{
   user: any;
 } | null> {
   try {
+    // Clear any existing session to force fresh authentication
+    if (web3auth.connected) {
+      await web3auth.logout();
+    }
+    
     const web3authProvider = await web3auth.connect();
     if (!web3authProvider) {
       console.error("Web3Auth provider not available.");
@@ -121,10 +128,10 @@ export async function login(): Promise<{
 
     console.log("Logged in successfully!");
 
-    // Get private key from Web3Auth
-    const privateKey = await web3authProvider.request({
+    // Get Ethereum private key from Web3Auth
+    const ethPrivateKey = await web3authProvider.request({
       method: "eth_private_key",
-    });
+    }) as string;
 
     // Setup EVM provider
     const evmProvider = new EthereumPrivateKeyProvider({
@@ -136,9 +143,9 @@ export async function login(): Promise<{
         },
       },
     });
-    await evmProvider.setupProvider(privateKey);
+    await evmProvider.setupProvider(ethPrivateKey);
 
-    // Setup Solana provider  
+    // Setup Solana provider using the same Web3Auth provider
     const solanaProvider = new SolanaPrivateKeyProvider({
       config: {
         chainConfig: {
@@ -148,13 +155,23 @@ export async function login(): Promise<{
         },
       },
     });
-    await solanaProvider.setupProvider(privateKey);
+    
+    try {
+      // Try using the Web3Auth provider directly for Solana
+      await solanaProvider.setupProvider(web3authProvider);
+    } catch (solanaError) {
+      console.warn("Failed to setup Solana provider:", solanaError);
+      // Continue without Solana provider for now
+    }
 
     // Get user info
     const user = await web3auth.getUserInfo();
 
     return {
-      providers: { evmProvider, solanaProvider },
+      providers: { 
+        evmProvider, 
+        solanaProvider: solanaProvider // May be undefined if setup failed
+      },
       user,
     };
   } catch (error) {

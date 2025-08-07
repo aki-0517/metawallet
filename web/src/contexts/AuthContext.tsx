@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { initializeWeb3Auth, login, logout, web3auth } from '../lib/web3auth';
+import { initializeWeb3Auth, login, logout } from '../lib/web3auth';
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 import { SolanaPrivateKeyProvider } from "@web3auth/solana-provider";
 
@@ -44,24 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initAuth = async () => {
       try {
         await initializeWeb3Auth();
-        
-        if (web3auth.connected && web3auth.status === 'connected') {
-          try {
-            const userInfo = await web3auth.getUserInfo();
-            setUser(userInfo);
-            setIsAuthenticated(true);
-            
-            // Get stored username from localStorage
-            const storedUsername = localStorage.getItem('metawallet_username');
-            if (storedUsername) {
-              setUsernameState(storedUsername);
-            }
-          } catch (userInfoError) {
-            console.warn('Failed to get user info, but Web3Auth is connected:', userInfoError);
-            // Still set as authenticated if Web3Auth reports connected
-            setIsAuthenticated(true);
-          }
-        }
+        console.log('Web3Auth initialized, but not auto-connecting. User must login manually.');
       } catch (error) {
         console.error('Error initializing auth:', error);
         
@@ -82,7 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const getAddresses = async () => {
       if (providers?.evmProvider) {
         try {
-          const evmAccounts = await providers.evmProvider.getAccounts();
+          const evmAccounts = await providers.evmProvider.request({
+            method: "eth_accounts",
+          }) as string[];
           if (evmAccounts.length > 0) {
             setEvmAddress(evmAccounts[0]);
           }
@@ -93,7 +78,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (providers?.solanaProvider) {
         try {
-          const solanaAccounts = await providers.solanaProvider.getAccounts();
+          const solanaAccounts = await providers.solanaProvider.request({
+            method: "getAccounts",
+          }) as string[];
           if (solanaAccounts.length > 0) {
             setSolanaAddress(solanaAccounts[0]);
           }
@@ -116,11 +103,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProviders(result.providers);
         setIsAuthenticated(true);
         
-        // Check if user has a username stored
-        const storedUsername = localStorage.getItem('metawallet_username');
-        if (storedUsername) {
-          setUsernameState(storedUsername);
-        }
+        // Force username registration every time (no localStorage restoration)
+        setUsernameState(null);
       } else {
         console.warn('Login failed or was cancelled');
       }
