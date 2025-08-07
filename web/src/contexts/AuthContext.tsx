@@ -45,19 +45,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await initializeWeb3Auth();
         
-        if (web3auth.connected) {
-          const userInfo = await web3auth.getUserInfo();
-          setUser(userInfo);
-          setIsAuthenticated(true);
-          
-          // Get stored username from localStorage
-          const storedUsername = localStorage.getItem('metawallet_username');
-          if (storedUsername) {
-            setUsernameState(storedUsername);
+        if (web3auth.connected && web3auth.status === 'connected') {
+          try {
+            const userInfo = await web3auth.getUserInfo();
+            setUser(userInfo);
+            setIsAuthenticated(true);
+            
+            // Get stored username from localStorage
+            const storedUsername = localStorage.getItem('metawallet_username');
+            if (storedUsername) {
+              setUsernameState(storedUsername);
+            }
+          } catch (userInfoError) {
+            console.warn('Failed to get user info, but Web3Auth is connected:', userInfoError);
+            // Still set as authenticated if Web3Auth reports connected
+            setIsAuthenticated(true);
           }
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
+        
+        // Don't throw error to prevent app crash
+        // User can still try to login manually
+        if (error instanceof Error) {
+          console.error('Auth initialization failed, but app will continue to load');
+        }
       } finally {
         setIsLoading(false);
       }
@@ -109,9 +121,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (storedUsername) {
           setUsernameState(storedUsername);
         }
+      } else {
+        console.warn('Login failed or was cancelled');
       }
     } catch (error) {
       console.error('Login error:', error);
+      if (error instanceof Error) {
+        console.error('Login failed with:', error.message);
+      }
     } finally {
       setIsLoading(false);
     }

@@ -8,18 +8,29 @@ const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "YOUR_WEB3AUTH_CLIEN
 console.log("Web3Auth Client ID:", clientId);
 console.log("Web3Auth constructor:", Web3Auth);
 
+// Track initialization state
+let isInitializing = false;
+let initializationPromise: Promise<void> | null = null;
+
+// Create the Ethereum private key provider
+const privateKeyProvider = new EthereumPrivateKeyProvider({
+  config: {
+    chainConfig: {
+      chainNamespace: CHAIN_NAMESPACES.EIP155,
+      chainId: "0xaa36a7", // Sepolia Testnet
+      rpcTarget: import.meta.env.VITE_SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
+      displayName: "Sepolia Testnet",
+      blockExplorerUrl: "https://sepolia.etherscan.io",
+      ticker: "ETH",
+      tickerName: "Ethereum",
+    },
+  },
+});
+
 export const web3auth = new Web3Auth({
   clientId,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
-  chainConfig: {
-    chainNamespace: CHAIN_NAMESPACES.EIP155,
-    chainId: "0xaa36a7", // Sepolia Testnet
-    rpcTarget: import.meta.env.VITE_SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
-    displayName: "Sepolia Testnet",
-    blockExplorerUrl: "https://sepolia.etherscan.io",
-    ticker: "ETH",
-    tickerName: "Ethereum",
-  },
+  privateKeyProvider,
   uiConfig: {
     appName: import.meta.env.VITE_APP_NAME || "Metawallet",
     appLogo: import.meta.env.VITE_APP_LOGO || "https://web3auth.io/images/w3a-L-Favicon-1.svg",
@@ -29,16 +40,69 @@ export const web3auth = new Web3Auth({
 });
 
 export async function initializeWeb3Auth() {
-  try {
-    console.log("web3auth instance:", web3auth);
-    console.log("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(web3auth)));
-    
-    await web3auth.init();
-    console.log("Web3Auth initialized successfully");
-  } catch (error) {
-    console.error("Error initializing Web3Auth:", error);
-    throw error;
+  // If already initializing, wait for it to complete
+  if (isInitializing && initializationPromise) {
+    console.log("Web3Auth initialization already in progress, waiting...");
+    return initializationPromise;
   }
+  
+  // If already ready, no need to initialize again
+  if (web3auth.status === 'ready') {
+    console.log("Web3Auth already initialized");
+    return Promise.resolve();
+  }
+  
+  isInitializing = true;
+  
+  initializationPromise = (async () => {
+    try {
+      console.log("web3auth instance:", web3auth);
+      console.log("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(web3auth)));
+      
+      // Detect and handle wallet conflicts
+      if (typeof window !== 'undefined' && (window as any).ethereum) {
+        const ethereum = (window as any).ethereum;
+        console.warn("⚠️  Multiple wallet providers detected. This may cause conflicts.");
+        console.warn("💡 If you experience issues, try disabling other wallet extensions temporarily.");
+        
+        // Check if MetaMask is specifically detected
+        if (ethereum.isMetaMask) {
+          console.warn("🦊 MetaMask detected. Web3Auth will work alongside it.");
+        }
+        
+        // Handle provider injection conflicts more gracefully
+        try {
+          // Store original ethereum provider before Web3Auth modifies it
+          if (!window._originalEthereum) {
+            window._originalEthereum = ethereum;
+          }
+        } catch (providerError) {
+          console.warn("Provider conflict detected, continuing with Web3Auth initialization");
+        }
+      }
+      
+      await web3auth.initModal();
+      console.log("✅ Web3Auth initialized successfully");
+    } catch (error) {
+      console.error("❌ Error initializing Web3Auth:", error);
+      
+      // Provide specific guidance for common errors
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to connect')) {
+          console.error("💡 Try refreshing the page or disabling conflicting wallet extensions");
+        } else if (error.message.includes('CLIENT_ID')) {
+          console.error("💡 Check that VITE_WEB3AUTH_CLIENT_ID is set in your environment variables");
+        }
+      }
+      
+      throw error;
+    } finally {
+      isInitializing = false;
+      initializationPromise = null;
+    }
+  })();
+  
+  return initializationPromise;
 }
 
 export async function login(): Promise<{
@@ -57,19 +121,24 @@ export async function login(): Promise<{
 
     console.log("Logged in successfully!");
 
+    // Get private key from Web3Auth
+    const privateKey = await web3authProvider.request({
+      method: "eth_private_key",
+    });
+
     // Setup EVM provider
     const evmProvider = new EthereumPrivateKeyProvider({
       config: {
         chainConfig: {
           chainNamespace: CHAIN_NAMESPACES.EIP155,
           chainId: "0xaa36a7", // Sepolia Testnet
-          rpcTarget: import.meta.env.VITE_SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
+          rpcTarget: import.meta.env.VITE_SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
         },
       },
     });
-    await evmProvider.setupProvider(web3authProvider);
+    await evmProvider.setupProvider(privateKey);
 
-    // Setup Solana provider
+    // Setup Solana provider  
     const solanaProvider = new SolanaPrivateKeyProvider({
       config: {
         chainConfig: {
@@ -79,7 +148,7 @@ export async function login(): Promise<{
         },
       },
     });
-    await solanaProvider.setupProvider(web3authProvider);
+    await solanaProvider.setupProvider(privateKey);
 
     // Get user info
     const user = await web3auth.getUserInfo();
