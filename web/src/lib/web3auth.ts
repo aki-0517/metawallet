@@ -5,6 +5,9 @@ import { SolanaPrivateKeyProvider } from "@web3auth/solana-provider";
 
 const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "YOUR_WEB3AUTH_CLIENT_ID_HERE";
 
+console.log("Web3Auth Client ID:", clientId);
+console.log("Web3Auth constructor:", Web3Auth);
+
 export const web3auth = new Web3Auth({
   clientId,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
@@ -27,7 +30,10 @@ export const web3auth = new Web3Auth({
 
 export async function initializeWeb3Auth() {
   try {
-    await web3auth.initModal();
+    console.log("web3auth instance:", web3auth);
+    console.log("Available methods:", Object.getOwnPropertyNames(Object.getPrototypeOf(web3auth)));
+    
+    await web3auth.init();
     console.log("Web3Auth initialized successfully");
   } catch (error) {
     console.error("Error initializing Web3Auth:", error);
