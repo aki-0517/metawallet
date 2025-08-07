@@ -13,8 +13,8 @@
 | カテゴリ | 技術 | 目的 |
 | :--- | :--- | :--- |
 | **フロントエンド** | React, TypeScript, Vite | モダンで高速なWebアプリケーション開発 |
-| **ブロックチェーン接続** | viem / wagmi | EVMチェーン（Sepolia）との効率的な対話 |
-| | @solana/kit | Solanaブロックチェーン（Devnet）との対話 |
+| **ブロックチェーン接続** | viem / wagmi (ethers, web3.jsは極力使わない) | EVMチェーン（Sepolia）との効率的な対話 |
+| | @solana/kit (@solana/web3.jsは極力使わない) | Solanaブロックチェーン（Devnet）との対話 |
 | **ウォレット/認証** | Web3Auth (MetaMask Embedded Wallet) | メールアドレスによるノンカストディアルウォレット生成と管理 |
 | **スタイリング** | Tailwind CSS | 迅速なUI開発 |
 | **ネームサービス** | ENS, SNS | ユーザーネームの一意性検証とアドレス解決 |
