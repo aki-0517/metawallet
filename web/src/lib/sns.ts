@@ -7,13 +7,20 @@ const connection = new Connection(
 
 export async function checkSnsAvailability(domainName: string): Promise<boolean> {
   try {
-    const { pubkey } = await getDomainKey(domainName);
+    // Remove .sol suffix if present, as getDomainKey expects just the name
+    const cleanDomainName = domainName.endsWith('.sol') 
+      ? domainName.slice(0, -4) 
+      : domainName;
+      
+    const { pubkey } = await getDomainKey(cleanDomainName);
     await NameRegistryState.retrieve(connection, pubkey);
     
     console.log(`Domain '${domainName}' is already taken.`);
     return false;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Account does not exist")) {
+    if (error instanceof Error && 
+        (error.message.includes("Account does not exist") || 
+         error.message.includes("Invalid name account"))) {
       console.log(`Domain '${domainName}' is available.`);
       return true;
     } else {
@@ -25,7 +32,11 @@ export async function checkSnsAvailability(domainName: string): Promise<boolean>
 
 export async function resolveSnsAddress(domainName: string): Promise<string | null> {
   try {
-    const { pubkey } = await getDomainKey(domainName);
+    const cleanDomainName = domainName.endsWith('.sol') 
+      ? domainName.slice(0, -4) 
+      : domainName;
+      
+    const { pubkey } = await getDomainKey(cleanDomainName);
     const registry = await NameRegistryState.retrieve(connection, pubkey);
     return registry.owner.toBase58();
   } catch (error) {

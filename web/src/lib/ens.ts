@@ -1,6 +1,6 @@
 import { createPublicClient, http } from 'viem';
 import { sepolia } from 'viem/chains';
-import { normalize } from 'viem/ens';
+import { normalize, namehash } from 'viem/ens';
 
 export const publicClient = createPublicClient({
   chain: sepolia,
@@ -9,11 +9,23 @@ export const publicClient = createPublicClient({
 
 export async function checkEnsAvailability(name: string): Promise<boolean> {
   try {
-    const owner = await publicClient.getEnsOwner({
-      name: normalize(name),
+    // Use readContract to directly call ENS Registry
+    const owner = await publicClient.readContract({
+      address: '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e', // ENS Registry address
+      abi: [
+        {
+          inputs: [{ name: 'node', type: 'bytes32' }],
+          name: 'owner',
+          outputs: [{ name: '', type: 'address' }],
+          stateMutability: 'view',
+          type: 'function',
+        },
+      ],
+      functionName: 'owner',
+      args: [namehash(normalize(name))],
     });
     
-    return owner === null || owner === '0x0000000000000000000000000000000000000000';
+    return owner === '0x0000000000000000000000000000000000000000';
   } catch (error) {
     console.error(`Error checking availability for ${name}:`, error);
     return true;

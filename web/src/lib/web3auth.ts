@@ -145,23 +145,27 @@ export async function login(): Promise<{
     });
     await evmProvider.setupProvider(ethPrivateKey);
 
-    // Setup Solana provider using the same Web3Auth provider
-    const solanaProvider = new SolanaPrivateKeyProvider({
-      config: {
-        chainConfig: {
-          chainNamespace: CHAIN_NAMESPACES.SOLANA,
-          chainId: "0x2", // Solana Devnet
-          rpcTarget: import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com",
-        },
-      },
-    });
+    // Get Solana private key from Web3Auth
+    let solanaProvider: SolanaPrivateKeyProvider | undefined;
     
     try {
-      // Try using the Web3Auth provider directly for Solana
-      await solanaProvider.setupProvider(web3authProvider);
+      // Convert Ethereum private key to Solana private key format
+      const solanaPrivateKey = ethPrivateKey; // Use same key for Solana
+      
+      solanaProvider = new SolanaPrivateKeyProvider({
+        config: {
+          chainConfig: {
+            chainNamespace: CHAIN_NAMESPACES.SOLANA,
+            chainId: "0x2", // Solana Devnet
+            rpcTarget: import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com",
+          },
+        },
+      });
+      
+      await solanaProvider.setupProvider(solanaPrivateKey);
     } catch (solanaError) {
       console.warn("Failed to setup Solana provider:", solanaError);
-      // Continue without Solana provider for now
+      solanaProvider = undefined;
     }
 
     // Get user info

@@ -81,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const solanaAccounts = await providers.solanaProvider.request({
             method: "getAccounts",
           }) as string[];
-          if (solanaAccounts.length > 0) {
+          if (solanaAccounts && solanaAccounts.length > 0) {
             setSolanaAddress(solanaAccounts[0]);
           }
         } catch (error) {
