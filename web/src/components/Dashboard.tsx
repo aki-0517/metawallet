@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { SendMoney } from './SendMoney';
 import { TransactionHistory } from './TransactionHistory';
+import { getEvmBalances } from '../lib/evm';
+import { getSolanaBalances } from '../lib/solana';
 
 interface AssetBalance {
   usdc: number;
@@ -24,26 +26,36 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'send' | 'history'>('overview');
 
   useEffect(() => {
-    // Mock balance loading - in real implementation, fetch from blockchain
     const fetchBalances = async () => {
-      setIsLoading(true);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock balances for demo
-      setBalances({
-        ethereum: {
-          usdc: 150.50,
-          usdt: 75.25
-        },
-        solana: {
-          usdc: 320.75,
-          usdt: 180.00
-        }
-      });
-      
-      setIsLoading(false);
+      try {
+        setIsLoading(true);
+        const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string | undefined;
+        const usdtEvm = (import.meta as any).env?.VITE_USDT_SEPOLIA_ADDRESS as string | undefined;
+        const usdcSol = (import.meta as any).env?.VITE_USDC_SOLANA_MINT as string | undefined;
+        const usdtSol = (import.meta as any).env?.VITE_USDT_SOLANA_MINT as string | undefined;
+
+        const [evm, sol] = await Promise.all([
+          evmAddress
+            ? getEvmBalances({
+                walletAddress: evmAddress as any,
+                usdcAddress: usdcEvm as any,
+                usdtAddress: usdtEvm as any,
+              })
+            : Promise.resolve({ usdc: 0, usdt: 0 }),
+          solanaAddress
+            ? getSolanaBalances({ owner: solanaAddress, usdcMint: usdcSol, usdtMint: usdtSol })
+            : Promise.resolve({ usdc: 0, usdt: 0 }),
+        ]);
+
+        setBalances({
+          ethereum: { usdc: evm.usdc, usdt: evm.usdt },
+          solana: { usdc: sol.usdc, usdt: sol.usdt },
+        });
+      } catch (err) {
+        console.error('Failed to load balances:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     fetchBalances();

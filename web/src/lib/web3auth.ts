@@ -33,11 +33,9 @@ export const web3auth = new Web3Auth({
   privateKeyProvider,
   uiConfig: {
     appName: import.meta.env.VITE_APP_NAME || "Metawallet",
-    appLogo: import.meta.env.VITE_APP_LOGO || "https://web3auth.io/images/w3a-L-Favicon-1.svg",
     theme: {
       primary: "#768729"
     },
-    primaryButtonProvider: "google",
   },
 });
 
@@ -111,6 +109,7 @@ export async function login(): Promise<{
   providers: {
     evmProvider?: EthereumPrivateKeyProvider;
     solanaProvider?: SolanaPrivateKeyProvider;
+    rawProvider?: any;
   };
   user: any;
 } | null> {
@@ -174,7 +173,8 @@ export async function login(): Promise<{
     return {
       providers: { 
         evmProvider, 
-        solanaProvider: solanaProvider // May be undefined if setup failed
+        solanaProvider: solanaProvider, // may be undefined
+        rawProvider: web3authProvider,
       },
       user,
     };

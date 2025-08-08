@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
+import { getTransactions } from '../lib/txStore';
 
 interface Transaction {
   id: string;
   type: 'sent' | 'received';
-  recipient?: string;
-  sender?: string;
+  recipient?: string; // for sent
+  sender?: string;    // for received
   amount: number;
   currency: 'USDC' | 'USDT';
   chain: 'ethereum' | 'solana';
@@ -19,77 +20,22 @@ export function TransactionHistory() {
   const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
 
   useEffect(() => {
-    // Mock transaction data - in real implementation, fetch from blockchain/database
-    const fetchTransactions = async () => {
-      setIsLoading(true);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock transactions
-      const mockTransactions: Transaction[] = [
-        {
-          id: '1',
-          type: 'sent',
-          recipient: '@alice',
-          amount: 50.00,
-          currency: 'USDC',
-          chain: 'ethereum',
-          status: 'completed',
-          timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-          hash: '0x1234...abcd'
-        },
-        {
-          id: '2',
-          type: 'received',
-          sender: '@bob',
-          amount: 25.50,
-          currency: 'USDT',
-          chain: 'solana',
-          status: 'completed',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2 hours ago
-          hash: '5J7K...9xyz'
-        },
-        {
-          id: '3',
-          type: 'sent',
-          recipient: 'HXt4...9KLm',
-          amount: 100.00,
-          currency: 'USDC',
-          chain: 'solana',
-          status: 'pending',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 4), // 4 hours ago
-          hash: '8N2P...5def'
-        },
-        {
-          id: '4',
-          type: 'received',
-          sender: '0x742d...8E5f',
-          amount: 75.25,
-          currency: 'USDT',
-          chain: 'ethereum',
-          status: 'completed',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-          hash: '0x9876...5432'
-        },
-        {
-          id: '5',
-          type: 'sent',
-          recipient: '@charlie',
-          amount: 200.00,
-          currency: 'USDC',
-          chain: 'ethereum',
-          status: 'failed',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2), // 2 days ago
-          hash: '0xabcd...1234'
-        }
-      ];
-      
-      setTransactions(mockTransactions);
-      setIsLoading(false);
-    };
-
-    fetchTransactions();
+    setIsLoading(true);
+    const list = getTransactions();
+    const normalized: Transaction[] = list.map((t) => ({
+      id: t.id,
+      type: t.type,
+      recipient: t.type === 'sent' ? t.counterparty : undefined,
+      sender: t.type === 'received' ? t.counterparty : undefined,
+      amount: t.amount,
+      currency: t.currency,
+      chain: t.chain,
+      status: t.status,
+      timestamp: new Date(t.timestamp),
+      hash: t.hash,
+    }));
+    setTransactions(normalized);
+    setIsLoading(false);
   }, []);
 
   const filteredTransactions = transactions.filter(tx => {
@@ -230,6 +176,14 @@ export function TransactionHistory() {
                       </div>
                       <div className="flex items-center space-x-4 text-sm text-gray-400">
                         <span>{formatTimestamp(tx.timestamp)}</span>
+                        <a
+                          href={tx.chain === 'ethereum' ? `https://sepolia.etherscan.io/tx/${tx.hash}` : `https://explorer.solana.com/tx/${tx.hash}?cluster=devnet`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="hover:text-blue-400"
+                        >
+                          View
+                        </a>
                         <button
                           onClick={() => copyToClipboard(tx.hash)}
                           className="flex items-center space-x-1 hover:text-blue-400 transition-colors"

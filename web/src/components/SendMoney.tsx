@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveEnsAddress } from '../lib/ens';
 import { resolveSnsAddress } from '../lib/sns';
+import { sendErc20 } from '../lib/evm';
+import { sendSplToken } from '../lib/solana';
+import { addTransaction } from '../lib/txStore';
 
 interface SendMoneyProps {
   onBack: () => void;
@@ -107,8 +110,74 @@ export function SendMoney({ onBack }: SendMoneyProps) {
     setError('');
 
     try {
-      // Mock sending - in real implementation, use Web3Auth providers to send transactions
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string | undefined;
+      const usdcSol = (import.meta as any).env?.VITE_USDC_SOLANA_MINT as string | undefined;
+
+      const now = Date.now();
+      const tasks: Promise<void>[] = [];
+
+      const pushEth = async (toAddress: string, usd: number) => {
+        if (!providers?.evmProvider || !evmAddress || !usdcEvm) return;
+        const hash = await sendErc20({
+          provider: providers.evmProvider,
+          tokenAddress: usdcEvm as any,
+          from: evmAddress as any,
+          to: toAddress as any,
+          amountTokens: usd.toFixed(6),
+        });
+        addTransaction({
+          id: `${hash}`,
+          type: 'sent',
+          counterparty: sendMode === 'username' ? `@${recipient}` : toAddress,
+          amount: usd,
+          currency: 'USDC',
+          chain: 'ethereum',
+          status: 'completed',
+          timestamp: now,
+          hash,
+        });
+      };
+
+      const pushSol = async (toAddress: string, usd: number) => {
+        if (!providers?.solanaProvider || !solanaAddress || !usdcSol) return;
+        const sig = await sendSplToken({
+          provider: providers.solanaProvider,
+          mint: usdcSol,
+          fromPubkey: solanaAddress,
+          toPubkey: toAddress,
+          amountTokens: usd.toFixed(6),
+        });
+        addTransaction({
+          id: `${sig}`,
+          type: 'sent',
+          counterparty: sendMode === 'username' ? `@${recipient}` : toAddress,
+          amount: usd,
+          currency: 'USDC',
+          chain: 'solana',
+          status: 'completed',
+          timestamp: now,
+          hash: sig,
+        });
+      };
+
+      if (sendMode === 'address') {
+        const usd = parseFloat(amount);
+        if (selectedChain === 'ethereum') {
+          tasks.push(pushEth(recipient, usd));
+        } else if (selectedChain === 'solana') {
+          tasks.push(pushSol(recipient, usd));
+        }
+      } else {
+        const distr = calculateDistribution();
+        if (distr.ethereum > 0 && resolvedAddresses.ethereum) {
+          tasks.push(pushEth(resolvedAddresses.ethereum, distr.ethereum));
+        }
+        if (distr.solana > 0 && resolvedAddresses.solana) {
+          tasks.push(pushSol(resolvedAddresses.solana, distr.solana));
+        }
+      }
+
+      await Promise.all(tasks);
       
       // Reset form after successful send
       setRecipient('');
@@ -116,9 +185,7 @@ export function SendMoney({ onBack }: SendMoneyProps) {
       setResolvedAddresses({});
       setShowConfirmation(false);
       setError('');
-      
-      // Show success message (you could add a toast notification here)
-      alert('Transaction sent successfully! (This is a mock transaction)');
+      alert('Transaction sent successfully!');
     } catch (error) {
       console.error('Error sending transaction:', error);
       setError('Failed to send transaction. Please try again.');

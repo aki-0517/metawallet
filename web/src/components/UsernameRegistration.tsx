@@ -104,7 +104,7 @@ export function UsernameRegistration() {
                 className="w-full pl-8 pr-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 minLength={3}
                 maxLength={20}
-                pattern="[a-z0-9\\-]+"
+                pattern="[a-z0-9\-]+"
                 required
               />
             </div>
