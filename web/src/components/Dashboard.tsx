@@ -7,7 +7,6 @@ import { getSolanaBalances } from '../lib/solana';
 
 interface AssetBalance {
   usdc: number;
-  usdt: number;
 }
 
 interface ChainBalances {
@@ -18,8 +17,8 @@ interface ChainBalances {
 export function Dashboard() {
   const { user, username, evmAddress, solanaAddress, logout } = useAuth();
   const [balances, setBalances] = useState<ChainBalances>({
-    ethereum: { usdc: 0, usdt: 0 },
-    solana: { usdc: 0, usdt: 0 }
+    ethereum: { usdc: 0 },
+    solana: { usdc: 0 }
   });
   const [isLoading, setIsLoading] = useState(true);
   const [showAddresses, setShowAddresses] = useState(false);
@@ -30,26 +29,23 @@ export function Dashboard() {
       try {
         setIsLoading(true);
         const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string | undefined;
-        const usdtEvm = (import.meta as any).env?.VITE_USDT_SEPOLIA_ADDRESS as string | undefined;
         const usdcSol = (import.meta as any).env?.VITE_USDC_SOLANA_MINT as string | undefined;
-        const usdtSol = (import.meta as any).env?.VITE_USDT_SOLANA_MINT as string | undefined;
 
         const [evm, sol] = await Promise.all([
           evmAddress
             ? getEvmBalances({
                 walletAddress: evmAddress as any,
                 usdcAddress: usdcEvm as any,
-                usdtAddress: usdtEvm as any,
               })
-            : Promise.resolve({ usdc: 0, usdt: 0 }),
+            : Promise.resolve({ usdc: 0 }),
           solanaAddress
-            ? getSolanaBalances({ owner: solanaAddress, usdcMint: usdcSol, usdtMint: usdtSol })
-            : Promise.resolve({ usdc: 0, usdt: 0 }),
+            ? getSolanaBalances({ owner: solanaAddress, usdcMint: usdcSol })
+            : Promise.resolve({ usdc: 0 }),
         ]);
 
         setBalances({
-          ethereum: { usdc: evm.usdc, usdt: evm.usdt },
-          solana: { usdc: sol.usdc, usdt: sol.usdt },
+          ethereum: { usdc: evm.usdc },
+          solana: { usdc: sol.usdc },
         });
       } catch (err) {
         console.error('Failed to load balances:', err);
@@ -62,8 +58,8 @@ export function Dashboard() {
   }, [evmAddress, solanaAddress]);
 
   const totalUSD = 
-    balances.ethereum.usdc + balances.ethereum.usdt + 
-    balances.solana.usdc + balances.solana.usdt;
+    balances.ethereum.usdc + 
+    balances.solana.usdc;
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -177,10 +173,6 @@ export function Dashboard() {
                       <span className="text-gray-300">USDC</span>
                       <span className="text-white font-medium">${balances.ethereum.usdc.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">USDT</span>
-                      <span className="text-white font-medium">${balances.ethereum.usdt.toFixed(2)}</span>
-                    </div>
                   </div>
                 )}
               </div>
@@ -204,10 +196,6 @@ export function Dashboard() {
                     <div className="flex justify-between">
                       <span className="text-gray-300">USDC</span>
                       <span className="text-white font-medium">${balances.solana.usdc.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-300">USDT</span>
-                      <span className="text-white font-medium">${balances.solana.usdt.toFixed(2)}</span>
                     </div>
                   </div>
                 )}

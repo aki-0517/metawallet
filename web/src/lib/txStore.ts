@@ -1,5 +1,5 @@
 export type ChainType = "ethereum" | "solana";
-export type CurrencyType = "USDC" | "USDT";
+export type CurrencyType = "USDC";
 
 export interface StoredTx {
   id: string;

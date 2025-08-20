@@ -7,7 +7,7 @@ interface Transaction {
   recipient?: string; // for sent
   sender?: string;    // for received
   amount: number;
-  currency: 'USDC' | 'USDT';
+  currency: 'USDC';
   chain: 'ethereum' | 'solana';
   status: 'completed' | 'pending' | 'failed';
   timestamp: Date;

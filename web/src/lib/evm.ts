@@ -66,12 +66,10 @@ export async function getErc20Balance(params: {
 export async function getEvmBalances(params: {
   walletAddress: Address;
   usdcAddress?: Address;
-  usdtAddress?: Address;
-}): Promise<{ usdc: number; usdt: number }>
+}): Promise<{ usdc: number }>
 {
-  const { walletAddress, usdcAddress, usdtAddress } = params;
+  const { walletAddress, usdcAddress } = params;
   let usdc = 0;
-  let usdt = 0;
 
   if (usdcAddress) {
     try {
@@ -81,15 +79,7 @@ export async function getEvmBalances(params: {
       console.warn("Failed to load USDC balance:", e);
     }
   }
-  if (usdtAddress) {
-    try {
-      const { amount } = await getErc20Balance({ tokenAddress: usdtAddress, walletAddress });
-      usdt = amount;
-    } catch (e) {
-      console.warn("Failed to load USDT balance:", e);
-    }
-  }
-  return { usdc, usdt };
+  return { usdc };
 }
 
 export async function sendErc20(params: {

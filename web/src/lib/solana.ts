@@ -41,13 +41,11 @@ export async function getSplBalance(params: {
 export async function getSolanaBalances(params: {
   owner: string;
   usdcMint?: string;
-  usdtMint?: string;
-}): Promise<{ usdc: number; usdt: number }>
+}): Promise<{ usdc: number }>
 {
-  const { owner, usdcMint, usdtMint } = params;
+  const { owner, usdcMint } = params;
   const connection = getConnection();
   let usdc = 0;
-  let usdt = 0;
   if (usdcMint) {
     try {
       const { amount } = await getSplBalance({ connection, mint: usdcMint, owner });
@@ -56,15 +54,7 @@ export async function getSolanaBalances(params: {
       console.warn("Failed to load Solana USDC balance:", e);
     }
   }
-  if (usdtMint) {
-    try {
-      const { amount } = await getSplBalance({ connection, mint: usdtMint, owner });
-      usdt = amount;
-    } catch (e) {
-      console.warn("Failed to load Solana USDT balance:", e);
-    }
-  }
-  return { usdc, usdt };
+  return { usdc };
 }
 
 async function ensureRecipientAta(params: {
