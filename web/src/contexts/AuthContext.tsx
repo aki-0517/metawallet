@@ -1,11 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { initializeWeb3Auth, login, logout } from '../lib/web3auth';
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
-import { SolanaPrivateKeyProvider } from "@web3auth/solana-provider";
 
 interface WalletProviders {
   evmProvider?: EthereumPrivateKeyProvider;
-  solanaProvider?: SolanaPrivateKeyProvider;
   rawProvider?: any;
 }
 
@@ -77,45 +75,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      if (providers?.rawProvider || providers?.solanaProvider) {
-        try {
-          // Try multiple method names depending on provider version
-          // Web3Auth Solana PnP では solana_provider_config / solana_requestAccounts が一般的
-          const tryMethods = ["solana_requestAccounts", "solana_accounts", "getAccounts"];
-          let accounts: string[] | null = null;
-          for (const method of tryMethods) {
-            try {
-              const req = providers.rawProvider?.request ?? providers.solanaProvider?.request;
-              if (!req) break;
-              const res = await req({ method }) as any;
-              if (Array.isArray(res) && res.length > 0) {
-                accounts = res as string[];
-                break;
-              }
-            } catch (_) {
-              // try next method name
-            }
-          }
-          // 追加フォールバック: solana_provider_config から公開鍵を得られる場合がある
-          if (!accounts) {
-            try {
-              const req = providers.rawProvider?.request ?? providers.solanaProvider?.request;
-              const cfg = await req?.({ method: 'solana_provider_config', params: [] } as any);
-              // 一部SDKでは accounts が含まれるケースあり
-              if (cfg?.accounts && Array.isArray(cfg.accounts) && cfg.accounts.length > 0) {
-                accounts = cfg.accounts;
-              }
-            } catch {}
-          }
-          if (accounts && accounts.length > 0) {
-            setSolanaAddress(accounts[0]);
-          } else {
-            console.warn('No Solana accounts returned from provider');
-          }
-        } catch (error) {
-          console.error('Error getting Solana address:', error);
-        }
-      }
+      // Solana address is now handled in the login function
+      // No need to retrieve it separately here
     };
 
     getAddresses();
@@ -130,6 +91,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(result.user);
         setProviders(result.providers);
         setIsAuthenticated(true);
+        
+        // Set Solana address if available
+        if (result.solanaAddress) {
+          setSolanaAddress(result.solanaAddress);
+        }
         
         // Force username registration every time (no localStorage restoration)
         setUsernameState(null);

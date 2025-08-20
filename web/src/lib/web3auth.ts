@@ -1,7 +1,7 @@
 import { Web3Auth } from "@web3auth/modal";
 import { CHAIN_NAMESPACES, WEB3AUTH_NETWORK } from "@web3auth/base";
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
-import { SolanaPrivateKeyProvider } from "@web3auth/solana-provider";
+import { getSolanaAccount } from "./solanaRPC";
 
 const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID || "YOUR_WEB3AUTH_CLIENT_ID_HERE";
 
@@ -108,10 +108,10 @@ export async function initializeWeb3Auth() {
 export async function login(): Promise<{
   providers: {
     evmProvider?: EthereumPrivateKeyProvider;
-    solanaProvider?: SolanaPrivateKeyProvider;
     rawProvider?: any;
   };
   user: any;
+  solanaAddress?: string;
 } | null> {
   try {
     // Clear any existing session to force fresh authentication
@@ -144,27 +144,16 @@ export async function login(): Promise<{
     });
     await evmProvider.setupProvider(ethPrivateKey);
 
-    // Get Solana private key from Web3Auth
-    let solanaProvider: SolanaPrivateKeyProvider | undefined;
+    // Get Solana address using proper key derivation
+    let solanaAddress: string | undefined;
     
     try {
-      // Convert Ethereum private key to Solana private key format
-      const solanaPrivateKey = ethPrivateKey; // Use same key for Solana
-      
-      solanaProvider = new SolanaPrivateKeyProvider({
-        config: {
-          chainConfig: {
-            chainNamespace: CHAIN_NAMESPACES.SOLANA,
-            chainId: "0x2", // Solana Devnet
-            rpcTarget: import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com",
-          },
-        },
-      });
-      
-      await solanaProvider.setupProvider(solanaPrivateKey);
+      // Use the research-based approach for Solana key derivation
+      solanaAddress = await getSolanaAccount(web3authProvider);
+      console.log("Solana address generated:", solanaAddress);
     } catch (solanaError) {
-      console.warn("Failed to setup Solana provider:", solanaError);
-      solanaProvider = undefined;
+      console.warn("Failed to get Solana address:", solanaError);
+      solanaAddress = undefined;
     }
 
     // Get user info
@@ -173,10 +162,10 @@ export async function login(): Promise<{
     return {
       providers: { 
         evmProvider, 
-        solanaProvider: solanaProvider, // may be undefined
         rawProvider: web3authProvider,
       },
       user,
+      solanaAddress,
     };
   } catch (error) {
     console.error("Error logging in:", error);
