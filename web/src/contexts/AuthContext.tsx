@@ -26,6 +26,8 @@ interface AuthContextType {
   setUsername: (username: string) => void;
   evmAddress: string | null;
   solanaAddress: string | null;
+  hasFaucetTokens: boolean;
+  setHasFaucetTokens: (hasTokens: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -38,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [username, setUsernameState] = useState<string | null>(null);
   const [evmAddress, setEvmAddress] = useState<string | null>(null);
   const [solanaAddress, setSolanaAddress] = useState<string | null>(null);
+  const [hasFaucetTokens, setHasFaucetTokensState] = useState<boolean>(false);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -121,6 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUsernameState(null);
       setEvmAddress(null);
       setSolanaAddress(null);
+      setHasFaucetTokensState(false);
       localStorage.removeItem('metawallet_username');
     } catch (error) {
       console.error('Logout error:', error);
@@ -130,6 +134,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setUsername = (newUsername: string) => {
     setUsernameState(newUsername);
     localStorage.setItem('metawallet_username', newUsername);
+  };
+
+  const setHasFaucetTokens = (hasTokens: boolean) => {
+    setHasFaucetTokensState(hasTokens);
   };
 
   const value: AuthContextType = {
@@ -143,6 +151,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsername,
     evmAddress,
     solanaAddress,
+    hasFaucetTokens,
+    setHasFaucetTokens,
   };
 
   return (

@@ -1,10 +1,11 @@
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './components/LoginPage';
+import { FaucetScreen } from './components/FaucetScreen';
 import { UsernameRegistration } from './components/UsernameRegistration';
 import { Dashboard } from './components/Dashboard';
 
 function AppContent() {
-  const { isAuthenticated, username, isLoading } = useAuth();
+  const { isAuthenticated, username, isLoading, hasFaucetTokens } = useAuth();
 
   if (isLoading) {
     return (
@@ -19,6 +20,10 @@ function AppContent() {
 
   if (!isAuthenticated) {
     return <LoginPage />;
+  }
+
+  if (!hasFaucetTokens) {
+    return <FaucetScreen />;
   }
 
   if (!username) {

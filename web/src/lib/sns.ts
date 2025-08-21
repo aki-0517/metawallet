@@ -1,5 +1,6 @@
-import { Connection, PublicKey } from '@solana/web3.js';
-import { getDomainKey, NameRegistryState, reverseLookup } from '@bonfida/spl-name-service';
+import { Connection, PublicKey, Transaction, SystemProgram, Keypair } from '@solana/web3.js';
+import { getDomainKey, NameRegistryState, reverseLookup, createNameRegistry } from '@bonfida/spl-name-service';
+import { getSolanaKeypair, getSolanaConnection } from './solanaRPC';
 
 const connection = new Connection(
   import.meta.env.VITE_SOLANA_RPC_URL || "https://api.devnet.solana.com"
@@ -53,5 +54,65 @@ export async function resolveSnsName(address: string): Promise<string | null> {
   } catch (error) {
     console.error(`Could not reverse lookup address '${address}':`, error);
     return null;
+  }
+}
+
+export async function registerSnsName(
+  domainName: string,
+  ownerAddress: string,
+  web3authProvider: any
+): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  try {
+    const cleanDomainName = domainName.endsWith('.sol') 
+      ? domainName.slice(0, -4) 
+      : domainName;
+
+    // Get Solana keypair from Web3Auth provider using our utility function
+    const keypair = await getSolanaKeypair(web3authProvider);
+    const connection = getSolanaConnection();
+    
+    // Get the domain key for the name
+    const { pubkey: nameAccountKey } = await getDomainKey(cleanDomainName);
+    
+    // Create the name registry instruction
+    const space = 1000; // Allocate 1KB for the name registry
+    const lamports = await connection.getMinimumBalanceForRentExemption(space);
+    
+    // Create instruction to register the domain
+    const instruction = await createNameRegistry(
+      connection,
+      cleanDomainName,
+      space,
+      keypair.publicKey,
+      keypair.publicKey // payerKey - same as owner for simplicity
+    );
+
+    // Create transaction
+    const transaction = new Transaction().add(instruction);
+    
+    // Get recent blockhash
+    const { blockhash } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = keypair.publicKey;
+
+    // Sign transaction with the derived keypair
+    transaction.sign(keypair);
+    
+    // Send the signed transaction
+    const signature = await connection.sendRawTransaction(transaction.serialize());
+    
+    // Confirm transaction
+    const confirmation = await connection.confirmTransaction(signature);
+
+    return {
+      success: !confirmation.value.err,
+      txHash: signature,
+    };
+  } catch (error) {
+    console.error(`Error registering SNS name ${domainName}:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
