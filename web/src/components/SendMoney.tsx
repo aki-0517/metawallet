@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveEnsAddress } from '../lib/ens';
-import { resolveSnsAddress } from '../lib/sns';
 import { sendErc20 } from '../lib/evm';
-import { sendSplToken } from '../lib/solana';
 import { addTransaction } from '../lib/txStore';
 
 interface SendMoneyProps {
@@ -11,60 +9,48 @@ interface SendMoneyProps {
 }
 
 type SendMode = 'username' | 'address' | 'contact';
-type SelectedChain = 'ethereum' | 'solana' | 'auto';
 
 export function SendMoney({ onBack }: SendMoneyProps) {
-  const { evmAddress, solanaAddress, providers } = useAuth();
+  const { evmAddress, providers } = useAuth();
   const [sendMode, setSendMode] = useState<SendMode>('username');
   const [contacts] = useState([
     // { id: '1', username: 'alice', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24) },
     // { id: '2', username: 'bob', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3) },
     // { id: '3', username: 'charlie', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7) },
   ]);
-  const [selectedChain, setSelectedChain] = useState<SelectedChain>('auto');
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [isResolving, setIsResolving] = useState(false);
-  const [resolvedAddresses, setResolvedAddresses] = useState<{
-    ethereum?: string;
-    solana?: string;
-  }>({});
+  const [resolvedAddress, setResolvedAddress] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   useEffect(() => {
     if ((sendMode === 'username' || sendMode === 'contact') && recipient.length > 2) {
-      const resolveAddresses = async () => {
+      const resolveAddress = async () => {
         setIsResolving(true);
         setError('');
         
         try {
-          const [ensAddress, snsAddress] = await Promise.all([
-            resolveEnsAddress(`${recipient}.eth`),
-            resolveSnsAddress(`${recipient}.sol`),
-          ]);
+          const ensAddress = await resolveEnsAddress(`${recipient}.eth`);
+          setResolvedAddress(ensAddress || undefined);
 
-          setResolvedAddresses({
-            ethereum: ensAddress || undefined,
-            solana: snsAddress || undefined,
-          });
-
-          if (!ensAddress && !snsAddress) {
-            setError('Username not found on any network');
+          if (!ensAddress) {
+            setError('Username not found on Ethereum network');
           }
         } catch (error) {
-          console.error('Error resolving addresses:', error);
+          console.error('Error resolving address:', error);
           setError('Error resolving username');
         } finally {
           setIsResolving(false);
         }
       };
 
-      const debounce = setTimeout(resolveAddresses, 500);
+      const debounce = setTimeout(resolveAddress, 500);
       return () => clearTimeout(debounce);
     } else {
-      setResolvedAddresses({});
+      setResolvedAddress(undefined);
       setError('');
     }
   }, [recipient, sendMode]);
@@ -74,31 +60,14 @@ export function SendMoney({ onBack }: SendMoneyProps) {
     setSendMode('username');
   };
 
-  const calculateDistribution = () => {
-    const totalAmount = parseFloat(amount);
-    if (isNaN(totalAmount)) return { ethereum: 0, solana: 0 };
-
-    if (selectedChain === 'ethereum') {
-      return { ethereum: totalAmount, solana: 0 };
-    } else if (selectedChain === 'solana') {
-      return { ethereum: 0, solana: totalAmount };
-    } else {
-      // Auto distribution based on current balances (70% Ethereum, 30% Solana as per mock)
-      return {
-        ethereum: totalAmount * 0.7,
-        solana: totalAmount * 0.3,
-      };
-    }
-  };
-
   const handleSend = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount');
       return;
     }
 
-    if (sendMode === 'username' && (!resolvedAddresses.ethereum && !resolvedAddresses.solana)) {
-      setError('No addresses found for this username');
+    if (sendMode === 'username' && !resolvedAddress) {
+      setError('No address found for this username');
       return;
     }
 
@@ -111,78 +80,43 @@ export function SendMoney({ onBack }: SendMoneyProps) {
 
     try {
       const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string | undefined;
-      const usdcSol = (import.meta as any).env?.VITE_USDC_SOLANA_MINT as string | undefined;
-
-      const now = Date.now();
-      const tasks: Promise<void>[] = [];
-
-      const pushEth = async (toAddress: string, usd: number) => {
-        if (!providers?.evmProvider || !evmAddress || !usdcEvm) return;
-        const hash = await sendErc20({
-          provider: providers.evmProvider,
-          tokenAddress: usdcEvm as any,
-          from: evmAddress as any,
-          to: toAddress as any,
-          amountTokens: usd.toFixed(6),
-        });
-        addTransaction({
-          id: `${hash}`,
-          type: 'sent',
-          counterparty: sendMode === 'username' ? `@${recipient}` : toAddress,
-          amount: usd,
-          currency: 'USDC',
-          chain: 'ethereum',
-          status: 'completed',
-          timestamp: now,
-          hash,
-        });
-      };
-
-      const pushSol = async (toAddress: string, usd: number) => {
-        if (!providers?.solanaProvider || !solanaAddress || !usdcSol) return;
-        const sig = await sendSplToken({
-          provider: providers.solanaProvider,
-          mint: usdcSol,
-          fromPubkey: solanaAddress,
-          toPubkey: toAddress,
-          amountTokens: usd.toFixed(6),
-        });
-        addTransaction({
-          id: `${sig}`,
-          type: 'sent',
-          counterparty: sendMode === 'username' ? `@${recipient}` : toAddress,
-          amount: usd,
-          currency: 'USDC',
-          chain: 'solana',
-          status: 'completed',
-          timestamp: now,
-          hash: sig,
-        });
-      };
-
-      if (sendMode === 'address') {
-        const usd = parseFloat(amount);
-        if (selectedChain === 'ethereum') {
-          tasks.push(pushEth(recipient, usd));
-        } else if (selectedChain === 'solana') {
-          tasks.push(pushSol(recipient, usd));
-        }
-      } else {
-        const distr = calculateDistribution();
-        if (distr.ethereum > 0 && resolvedAddresses.ethereum) {
-          tasks.push(pushEth(resolvedAddresses.ethereum, distr.ethereum));
-        }
-        if (distr.solana > 0 && resolvedAddresses.solana) {
-          tasks.push(pushSol(resolvedAddresses.solana, distr.solana));
-        }
+      
+      if (!providers?.evmProvider || !evmAddress || !usdcEvm) {
+        throw new Error('Ethereum provider not available');
       }
 
-      await Promise.all(tasks);
+      const now = Date.now();
+      const usd = parseFloat(amount);
+      const toAddress = sendMode === 'username' ? resolvedAddress : recipient;
+
+      if (!toAddress) {
+        throw new Error('Recipient address not found');
+      }
+
+      const hash = await sendErc20({
+        provider: providers.evmProvider,
+        tokenAddress: usdcEvm as any,
+        from: evmAddress as any,
+        to: toAddress as any,
+        amountTokens: usd.toFixed(6),
+      });
+
+      addTransaction({
+        id: `${hash}`,
+        type: 'sent',
+        counterparty: sendMode === 'username' ? `@${recipient}` : toAddress,
+        amount: usd,
+        currency: 'USDC',
+        chain: 'ethereum',
+        status: 'completed',
+        timestamp: now,
+        hash,
+      });
       
       // Reset form after successful send
       setRecipient('');
       setAmount('');
-      setResolvedAddresses({});
+      setResolvedAddress(undefined);
       setShowConfirmation(false);
       setError('');
       alert('Transaction sent successfully!');
@@ -194,13 +128,11 @@ export function SendMoney({ onBack }: SendMoneyProps) {
     }
   };
 
-  const distribution = calculateDistribution();
-
   return (
     <div className="max-w-2xl mx-auto">
       <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8">
         <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-white">Send Money</h2>
+          <h2 className="text-2xl font-bold text-white">Send Money (Gasless)</h2>
           <button
             onClick={onBack}
             className="text-gray-400 hover:text-white transition-colors"
@@ -304,7 +236,7 @@ export function SendMoney({ onBack }: SendMoneyProps) {
                   type="text"
                   value={recipient}
                   onChange={(e) => setRecipient(e.target.value)}
-                  placeholder={sendMode === 'username' ? 'alice' : '0x... or address'}
+                  placeholder={sendMode === 'username' ? 'alice' : '0x... (Ethereum address)'}
                   className={`w-full ${sendMode === 'username' ? 'pl-8' : 'pl-4'} pr-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent`}
                 />
                 {isResolving && (
@@ -316,22 +248,12 @@ export function SendMoney({ onBack }: SendMoneyProps) {
               
               {/* Address Resolution Results */}
               {sendMode === 'username' && recipient.length > 2 && !isResolving && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-300">ENS (.eth):</span>
-                    {resolvedAddresses.ethereum ? (
+                    {resolvedAddress ? (
                       <span className="text-green-400 font-mono text-xs">
-                        {resolvedAddresses.ethereum.slice(0, 10)}...
-                      </span>
-                    ) : (
-                      <span className="text-red-400">Not found</span>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-300">SNS (.sol):</span>
-                    {resolvedAddresses.solana ? (
-                      <span className="text-green-400 font-mono text-xs">
-                        {resolvedAddresses.solana.slice(0, 10)}...
+                        {resolvedAddress.slice(0, 10)}...
                       </span>
                     ) : (
                       <span className="text-red-400">Not found</span>
@@ -342,24 +264,10 @@ export function SendMoney({ onBack }: SendMoneyProps) {
               </div>
             )}
 
-            {/* Chain Selection (only for address mode) */}
-            {sendMode === 'address' && (
-              <div>
-                <label className="block text-white font-medium mb-2">Chain</label>
-                <select
-                  value={selectedChain}
-                  onChange={(e) => setSelectedChain(e.target.value as SelectedChain)}
-                  className="w-full px-4 py-3 bg-white bg-opacity-20 border border-white border-opacity-30 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="ethereum" className="bg-gray-800">Ethereum (Sepolia)</option>
-                  <option value="solana" className="bg-gray-800">Solana (Devnet)</option>
-                </select>
-              </div>
-            )}
 
             {/* Amount Input */}
             <div>
-              <label className="block text-white font-medium mb-2">Amount (USD)</label>
+              <label className="block text-white font-medium mb-2">Amount (USDC)</label>
               <input
                 type="number"
                 value={amount}
@@ -371,24 +279,6 @@ export function SendMoney({ onBack }: SendMoneyProps) {
               />
             </div>
 
-            {/* Distribution Preview (for username mode with auto distribution) */}
-            {sendMode === 'username' && amount && parseFloat(amount) > 0 && (
-              <div className="bg-black bg-opacity-30 rounded-lg p-4">
-                <h4 className="text-white font-medium mb-3">Transaction Distribution:</h4>
-                {distribution.ethereum > 0 && (
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-gray-300">Ethereum (70%):</span>
-                    <span className="text-white">${distribution.ethereum.toFixed(2)}</span>
-                  </div>
-                )}
-                {distribution.solana > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-300">Solana (30%):</span>
-                    <span className="text-white">${distribution.solana.toFixed(2)}</span>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* Error Message */}
             {error && (
@@ -419,25 +309,13 @@ export function SendMoney({ onBack }: SendMoneyProps) {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Total Amount:</span>
-                  <span className="text-white font-semibold">${amount}</span>
+                  <span className="text-gray-300">Amount:</span>
+                  <span className="text-white font-semibold">${amount} USDC</span>
                 </div>
-                {sendMode === 'username' && (
-                  <>
-                    {distribution.ethereum > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">  • Ethereum:</span>
-                        <span className="text-gray-300">${distribution.ethereum.toFixed(2)}</span>
-                      </div>
-                    )}
-                    {distribution.solana > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-400">  • Solana:</span>
-                        <span className="text-gray-300">${distribution.solana.toFixed(2)}</span>
-                      </div>
-                    )}
-                  </>
-                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-400">Network:</span>
+                  <span className="text-gray-300">Ethereum (Sepolia)</span>
+                </div>
               </div>
             </div>
 
