@@ -142,7 +142,7 @@ export async function registerEnsName(
     });
 
     // ENS Registry Registrar Controller address on Sepolia
-    const registrarControllerAddress = '0xFED6a969AaA60E4961FCD3EBF1A2e8913ac65B72';
+    const registrarControllerAddress = '0xfb3cE5D01e0f33f41DbB39035dB9745962F1f968';
 
     // Get the registration price (simplified - in real implementation you'd call the price oracle)
     const price = BigInt('1000000000000000'); // 0.001 ETH in wei
@@ -175,7 +175,7 @@ export async function registerEnsName(
         normalizedName.replace('.eth', ''),
         address,
         BigInt(duration),
-        '0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63', // Public resolver on Sepolia
+        '0xE99638b40E4Fff0129D56f03b55b6bbC4BBE49b5', // Public resolver on Sepolia
         address
       ],
       value: price,
