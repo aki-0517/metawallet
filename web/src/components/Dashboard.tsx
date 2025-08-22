@@ -5,6 +5,7 @@ import { TransactionHistory } from './TransactionHistory';
 import { PaymentScreen } from './PaymentScreen';
 import { getEvmBalances } from '../lib/evm';
 import { getSolanaBalances } from '../lib/solana';
+import { formatBalanceWithSymbol } from '../lib/formatBalance';
 
 interface AssetBalance {
   usdc: number;
@@ -16,7 +17,7 @@ interface ChainBalances {
 }
 
 export function Dashboard() {
-  const { user, username, evmAddress, solanaAddress, logout } = useAuth();
+  const { user, username, evmAddress, solanaAddress, smartAccountAddress, eoaAddress, logout } = useAuth();
   const [balances, setBalances] = useState<ChainBalances>({
     ethereum: { usdc: 0 },
     solana: { usdc: 0 }
@@ -24,39 +25,77 @@ export function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [showAddresses, setShowAddresses] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'send' | 'history' | 'payment'>('overview');
+  const [balanceError, setBalanceError] = useState<string | null>(null);
+
+  const fetchBalances = async () => {
+    try {
+      setIsLoading(true);
+      setBalanceError(null);
+      const usdcEvm = import.meta.env.VITE_USDC_SEPOLIA_ADDRESS;
+      const usdcSol = import.meta.env.VITE_USDC_SOLANA_MINT;
+
+      console.log('Environment variables:', {
+        VITE_USDC_SEPOLIA_ADDRESS: import.meta.env.VITE_USDC_SEPOLIA_ADDRESS,
+        VITE_USDC_SOLANA_MINT: import.meta.env.VITE_USDC_SOLANA_MINT,
+      });
+
+      console.log('Fetching balances for:', {
+        smartAccountAddress,
+        evmAddress,
+        solanaAddress,
+        usdcEvm,
+        usdcSol
+      });
+
+      if (!usdcEvm) {
+        console.error('VITE_USDC_SEPOLIA_ADDRESS not found in environment variables');
+      }
+      if (!usdcSol) {
+        console.error('VITE_USDC_SOLANA_MINT not found in environment variables');
+      }
+
+      const [evm, sol] = await Promise.all([
+        (smartAccountAddress || evmAddress) && usdcEvm
+          ? getEvmBalances({
+              walletAddress: (smartAccountAddress || evmAddress) as any,
+              usdcAddress: usdcEvm as any,
+            })
+          : Promise.resolve({ usdc: 0 }),
+        solanaAddress && usdcSol
+          ? getSolanaBalances({ owner: solanaAddress, usdcMint: usdcSol })
+          : Promise.resolve({ usdc: 0 }),
+      ]);
+
+      console.log('Balance results:', { evm, sol });
+
+      setBalances({
+        ethereum: { usdc: evm.usdc },
+        solana: { usdc: sol.usdc },
+      });
+    } catch (err) {
+      console.error('Failed to load balances:', err);
+      setBalanceError(err instanceof Error ? err.message : 'Failed to load balances');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchBalances = async () => {
-      try {
-        setIsLoading(true);
-        const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string | undefined;
-        const usdcSol = (import.meta as any).env?.VITE_USDC_SOLANA_MINT as string | undefined;
+    if (smartAccountAddress || evmAddress || solanaAddress) {
+      fetchBalances();
+    }
+  }, [smartAccountAddress, evmAddress, solanaAddress]);
 
-        const [evm, sol] = await Promise.all([
-          evmAddress
-            ? getEvmBalances({
-                walletAddress: evmAddress as any,
-                usdcAddress: usdcEvm as any,
-              })
-            : Promise.resolve({ usdc: 0 }),
-          solanaAddress
-            ? getSolanaBalances({ owner: solanaAddress, usdcMint: usdcSol })
-            : Promise.resolve({ usdc: 0 }),
-        ]);
-
-        setBalances({
-          ethereum: { usdc: evm.usdc },
-          solana: { usdc: sol.usdc },
-        });
-      } catch (err) {
-        console.error('Failed to load balances:', err);
-      } finally {
-        setIsLoading(false);
+  // Auto refresh balances every 10 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (smartAccountAddress || evmAddress || solanaAddress) {
+        fetchBalances();
       }
-    };
+    }, 10000);
 
-    fetchBalances();
-  }, [evmAddress, solanaAddress]);
+    return () => clearInterval(interval);
+  }, [smartAccountAddress, evmAddress, solanaAddress]);
 
   const totalUSD = 
     balances.ethereum.usdc + 
@@ -139,7 +178,19 @@ export function Dashboard() {
           <div className="space-y-8">
             {/* Total Balance */}
             <div className="bg-white bg-opacity-10 backdrop-blur-lg rounded-2xl p-8 text-center">
-              <h2 className="text-lg text-gray-300 mb-2">Total Balance</h2>
+              <div className="flex items-center justify-between mb-2">
+                <h2 className="text-lg text-gray-300">Total Balance</h2>
+                <button
+                  onClick={fetchBalances}
+                  disabled={isLoading}
+                  className="text-blue-400 hover:text-blue-300 disabled:opacity-50 transition-colors"
+                  title="Refresh balances"
+                >
+                  <svg className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </button>
+              </div>
               {isLoading ? (
                 <div className="flex items-center justify-center space-x-2">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
@@ -147,10 +198,16 @@ export function Dashboard() {
                 </div>
               ) : (
                 <div className="text-5xl font-bold text-white mb-4">
-                  ${totalUSD.toFixed(2)}
+                  {formatBalanceWithSymbol(totalUSD)}
                 </div>
               )}
               <p className="text-gray-400">USD equivalent across all chains</p>
+              <p className="text-xs text-gray-500 mt-2">Auto-refreshes every 10 seconds</p>
+              {balanceError && (
+                <div className="mt-3 text-red-400 text-sm">
+                  Error: {balanceError}
+                </div>
+              )}
             </div>
 
             {/* Chain Balances */}
@@ -172,7 +229,7 @@ export function Dashboard() {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-gray-300">USDC</span>
-                      <span className="text-white font-medium">${balances.ethereum.usdc.toFixed(2)}</span>
+                      <span className="text-white font-medium">{formatBalanceWithSymbol(balances.ethereum.usdc)}</span>
                     </div>
                   </div>
                 )}
@@ -195,7 +252,7 @@ export function Dashboard() {
                   <div className="space-y-3">
                     <div className="flex justify-between">
                       <span className="text-gray-300">USDC</span>
-                      <span className="text-white font-medium">${balances.solana.usdc.toFixed(2)}</span>
+                      <span className="text-white font-medium">{formatBalanceWithSymbol(balances.solana.usdc)}</span>
                     </div>
                   </div>
                 )}
@@ -218,18 +275,41 @@ export function Dashboard() {
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-gray-300 text-sm">Ethereum Address</span>
+                      <span className="text-gray-300 text-sm">Smart Account Address</span>
                       <button
-                        onClick={() => evmAddress && copyToClipboard(evmAddress)}
+                        onClick={() => smartAccountAddress && copyToClipboard(smartAccountAddress)}
                         className="text-blue-400 hover:text-blue-300 text-sm"
                       >
                         Copy
                       </button>
                     </div>
                     <div className="bg-black bg-opacity-30 rounded-lg p-3 font-mono text-sm text-white break-all">
-                      {evmAddress || 'Loading...'}
+                      {smartAccountAddress || evmAddress || 'Loading...'}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-1">
+                      🏦 Gasless transactions supported
                     </div>
                   </div>
+                  
+                  {eoaAddress && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-gray-300 text-sm">EOA Address</span>
+                        <button
+                          onClick={() => copyToClipboard(eoaAddress)}
+                          className="text-blue-400 hover:text-blue-300 text-sm"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <div className="bg-black bg-opacity-30 rounded-lg p-3 font-mono text-sm text-white break-all">
+                        {eoaAddress}
+                      </div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        🔑 Private key controlled
+                      </div>
+                    </div>
+                  )}
                   
                   <div>
                     <div className="flex items-center justify-between mb-2">

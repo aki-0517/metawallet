@@ -3,8 +3,9 @@ import { initializeWeb3Auth, login, logout } from '../lib/web3auth';
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 
 interface WalletProviders {
-  evmProvider?: EthereumPrivateKeyProvider;
+  evmProvider?: any;
   rawProvider?: any;
+  smartAccountProvider?: any;
 }
 
 interface User {
@@ -26,6 +27,8 @@ interface AuthContextType {
   setUsername: (username: string) => void;
   evmAddress: string | null;
   solanaAddress: string | null;
+  smartAccountAddress: string | null;
+  eoaAddress: string | null;
   hasFaucetTokens: boolean;
   setHasFaucetTokens: (hasTokens: boolean) => void;
 }
@@ -40,6 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [username, setUsernameState] = useState<string | null>(null);
   const [evmAddress, setEvmAddress] = useState<string | null>(null);
   const [solanaAddress, setSolanaAddress] = useState<string | null>(null);
+  const [smartAccountAddress, setSmartAccountAddress] = useState<string | null>(null);
+  const [eoaAddress, setEoaAddress] = useState<string | null>(null);
   const [hasFaucetTokens, setHasFaucetTokensState] = useState<boolean>(false);
 
   useEffect(() => {
@@ -71,7 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             method: "eth_accounts",
           }) as string[];
           if (evmAccounts.length > 0) {
-            setEvmAddress(evmAccounts[0]);
+            // For smart accounts, first address is smart account, second is EOA
+            setEvmAddress(evmAccounts[0]); // Use smart account as primary EVM address
+            setSmartAccountAddress(evmAccounts[0]);
+            if (evmAccounts.length > 1) {
+              setEoaAddress(evmAccounts[1]);
+            }
           }
         } catch (error) {
           console.error('Error getting EVM address:', error);
@@ -100,6 +110,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSolanaAddress(result.solanaAddress);
         }
         
+        // Set smart account addresses if available
+        if (result.smartAccountAddress) {
+          setSmartAccountAddress(result.smartAccountAddress);
+        }
+        if (result.eoaAddress) {
+          setEoaAddress(result.eoaAddress);
+        }
+        
         // Force username registration every time (no localStorage restoration)
         setUsernameState(null);
       } else {
@@ -124,6 +142,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUsernameState(null);
       setEvmAddress(null);
       setSolanaAddress(null);
+      setSmartAccountAddress(null);
+      setEoaAddress(null);
       setHasFaucetTokensState(false);
       localStorage.removeItem('metawallet_username');
     } catch (error) {
@@ -151,6 +171,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUsername,
     evmAddress,
     solanaAddress,
+    smartAccountAddress,
+    eoaAddress,
     hasFaucetTokens,
     setHasFaucetTokens,
   };

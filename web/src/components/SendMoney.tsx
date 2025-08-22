@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveEnsAddress } from '../lib/ens';
-import { sendErc20 } from '../lib/evm';
+import { sendErc20, sendErc20WithUsdcGas } from '../lib/evm';
 import { addTransaction } from '../lib/txStore';
 
 interface SendMoneyProps {
@@ -11,7 +11,7 @@ interface SendMoneyProps {
 type SendMode = 'username' | 'address' | 'contact';
 
 export function SendMoney({ onBack }: SendMoneyProps) {
-  const { evmAddress, providers } = useAuth();
+  const { evmAddress, providers, smartAccountAddress } = useAuth();
   const [sendMode, setSendMode] = useState<SendMode>('username');
   const [contacts] = useState([
     // { id: '1', username: 'alice', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24) },
@@ -93,13 +93,44 @@ export function SendMoney({ onBack }: SendMoneyProps) {
         throw new Error('Recipient address not found');
       }
 
-      const hash = await sendErc20({
-        provider: providers.evmProvider,
-        tokenAddress: usdcEvm as any,
-        from: evmAddress as any,
-        to: toAddress as any,
-        amountTokens: usd.toFixed(6),
-      });
+      let hash: string;
+
+      // Use USDC gas payment if smart account is available
+      if (providers.smartAccountProvider && smartAccountAddress) {
+        const smartAccountProvider = providers.smartAccountProvider;
+        const smartAccount = smartAccountProvider.smartAccount;
+        const bundlerClient = smartAccountProvider.bundlerClient;
+
+        if (smartAccount && bundlerClient) {
+          hash = await sendErc20WithUsdcGas({
+            smartAccountProvider,
+            smartAccount,
+            bundlerClient,
+            tokenAddress: usdcEvm as any,
+            from: smartAccountAddress as any,
+            to: toAddress as any,
+            amountTokens: usd.toFixed(6),
+          });
+        } else {
+          // Fallback to regular transaction
+          hash = await sendErc20({
+            provider: providers.evmProvider,
+            tokenAddress: usdcEvm as any,
+            from: evmAddress as any,
+            to: toAddress as any,
+            amountTokens: usd.toFixed(6),
+          });
+        }
+      } else {
+        // Fallback to regular transaction
+        hash = await sendErc20({
+          provider: providers.evmProvider,
+          tokenAddress: usdcEvm as any,
+          from: evmAddress as any,
+          to: toAddress as any,
+          amountTokens: usd.toFixed(6),
+        });
+      }
 
       addTransaction({
         id: `${hash}`,
@@ -119,7 +150,7 @@ export function SendMoney({ onBack }: SendMoneyProps) {
       setResolvedAddress(undefined);
       setShowConfirmation(false);
       setError('');
-      alert('Transaction sent successfully!');
+      alert(`Transaction sent successfully! ${smartAccountAddress ? 'Gas paid with USDC.' : ''}`);
     } catch (error) {
       console.error('Error sending transaction:', error);
       setError('Failed to send transaction. Please try again.');
@@ -316,6 +347,12 @@ export function SendMoney({ onBack }: SendMoneyProps) {
                   <span className="text-gray-400">Network:</span>
                   <span className="text-gray-300">Ethereum (Sepolia)</span>
                 </div>
+                {smartAccountAddress && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">Gas Payment:</span>
+                    <span className="text-green-400">USDC (Gasless)</span>
+                  </div>
+                )}
               </div>
             </div>
 

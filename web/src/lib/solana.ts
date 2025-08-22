@@ -44,16 +44,25 @@ export async function getSolanaBalances(params: {
 }): Promise<{ usdc: number }>
 {
   const { owner, usdcMint } = params;
+  console.log('getSolanaBalances called with:', { owner, usdcMint });
+  
   const connection = getConnection();
   let usdc = 0;
+  
   if (usdcMint) {
     try {
+      console.log('Fetching Solana SPL balance for USDC...');
       const { amount } = await getSplBalance({ connection, mint: usdcMint, owner });
+      console.log('SPL balance result:', { amount });
       usdc = amount;
     } catch (e) {
-      console.warn("Failed to load Solana USDC balance:", e);
+      console.error("Failed to load Solana USDC balance:", e);
     }
+  } else {
+    console.warn('No USDC mint provided');
   }
+  
+  console.log('Final Solana balances:', { usdc });
   return { usdc };
 }
 

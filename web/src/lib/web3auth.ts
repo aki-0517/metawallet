@@ -27,10 +27,23 @@ const privateKeyProvider = new EthereumPrivateKeyProvider({
   },
 });
 
+const pimlicoApiKey = import.meta.env.VITE_PIMLICO_API_KEY;
+
 export const web3auth = new Web3Auth({
   clientId,
   web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
   privateKeyProvider,
+  accountAbstractionConfig: {
+    smartAccountType: "metamask",
+    chains: [
+      {
+        chainId: "0xaa36a7", // Sepolia Testnet
+        bundlerConfig: {
+          url: `https://api.pimlico.io/v2/sepolia/rpc?apikey=${pimlicoApiKey}`,
+        },
+      },
+    ],
+  },
   uiConfig: {
     appName: import.meta.env.VITE_APP_NAME || "Metawallet",
     theme: {
@@ -107,11 +120,14 @@ export async function initializeWeb3Auth() {
 
 export async function login(): Promise<{
   providers: {
-    evmProvider?: EthereumPrivateKeyProvider;
+    evmProvider?: any;
     rawProvider?: any;
+    smartAccountProvider?: any;
   };
   user: any;
   solanaAddress?: string;
+  smartAccountAddress?: string;
+  eoaAddress?: string;
 } | null> {
   try {
     // Clear any existing session to force fresh authentication
@@ -127,22 +143,34 @@ export async function login(): Promise<{
 
     console.log("Logged in successfully!");
 
-    // Get Ethereum private key from Web3Auth
-    const ethPrivateKey = await web3authProvider.request({
-      method: "eth_private_key",
-    }) as string;
+    // Get smart account provider from Web3Auth
+    const smartAccountProvider = web3auth.provider;
+    
+    // Get account abstraction provider for smart account features
+    const accountAbstractionProvider = web3auth.accountAbstractionProvider;
 
-    // Setup EVM provider
-    const evmProvider = new EthereumPrivateKeyProvider({
-      config: {
-        chainConfig: {
-          chainNamespace: CHAIN_NAMESPACES.EIP155,
-          chainId: "0xaa36a7", // Sepolia Testnet
-          rpcTarget: import.meta.env.VITE_SEPOLIA_RPC_URL || "https://ethereum-sepolia-rpc.publicnode.com",
-        },
-      },
-    });
-    await evmProvider.setupProvider(ethPrivateKey);
+    // Get addresses - first is smart account, second is EOA
+    let smartAccountAddress: string | undefined;
+    let eoaAddress: string | undefined;
+
+    if (smartAccountProvider) {
+      try {
+        // Request addresses from smart account provider
+        const addresses = await smartAccountProvider.request({
+          method: "eth_accounts"
+        }) as string[];
+        
+        if (addresses && addresses.length > 0) {
+          smartAccountAddress = addresses[0]; // Smart account address
+          eoaAddress = addresses[1]; // EOA address (if available)
+        }
+        
+        console.log("Smart Account Address:", smartAccountAddress);
+        console.log("EOA Address:", eoaAddress);
+      } catch (addressError) {
+        console.error("Failed to get smart account addresses:", addressError);
+      }
+    }
 
     // Get Solana address using proper key derivation
     let solanaAddress: string | undefined;
@@ -161,11 +189,14 @@ export async function login(): Promise<{
 
     return {
       providers: { 
-        evmProvider, 
+        evmProvider: smartAccountProvider, // Use smart account provider as EVM provider
         rawProvider: web3authProvider,
+        smartAccountProvider: accountAbstractionProvider,
       },
       user,
       solanaAddress,
+      smartAccountAddress,
+      eoaAddress,
     };
   } catch (error) {
     console.error("Error logging in:", error);
