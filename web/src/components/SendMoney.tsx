@@ -17,9 +17,9 @@ export function SendMoney({ onBack }: SendMoneyProps) {
   const { evmAddress, solanaAddress, providers } = useAuth();
   const [sendMode, setSendMode] = useState<SendMode>('username');
   const [contacts] = useState([
-    { id: '1', username: 'alice', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24) },
-    { id: '2', username: 'bob', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3) },
-    { id: '3', username: 'charlie', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7) },
+    // { id: '1', username: 'alice', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24) },
+    // { id: '2', username: 'bob', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3) },
+    // { id: '3', username: 'charlie', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7) },
   ]);
   const [selectedChain, setSelectedChain] = useState<SelectedChain>('auto');
   const [recipient, setRecipient] = useState('');
