@@ -118,6 +118,91 @@ export async function initializeWeb3Auth() {
   return initializationPromise;
 }
 
+// Check if user is already connected and restore session
+export async function checkExistingSession(): Promise<{
+  providers: {
+    evmProvider?: any;
+    rawProvider?: any;
+    smartAccountProvider?: any;
+  };
+  user: any;
+  solanaAddress?: string;
+  smartAccountAddress?: string;
+  eoaAddress?: string;
+} | null> {
+  try {
+    if (web3auth.connected) {
+      console.log("Found existing session, restoring...");
+      
+      const web3authProvider = web3auth.provider;
+      if (!web3authProvider) {
+        console.error("Web3Auth provider not available in existing session.");
+        return null;
+      }
+
+      // Get smart account provider from Web3Auth
+      const smartAccountProvider = web3auth.provider;
+      
+      // Get account abstraction provider for smart account features
+      const accountAbstractionProvider = web3auth.accountAbstractionProvider;
+
+      // Get addresses - first is smart account, second is EOA
+      let smartAccountAddress: string | undefined;
+      let eoaAddress: string | undefined;
+
+      if (smartAccountProvider) {
+        try {
+          // Request addresses from smart account provider
+          const addresses = await smartAccountProvider.request({
+            method: "eth_accounts"
+          }) as string[];
+          
+          if (addresses && addresses.length > 0) {
+            smartAccountAddress = addresses[0]; // Smart account address
+            eoaAddress = addresses[1]; // EOA address (if available)
+          }
+          
+          console.log("Restored Smart Account Address:", smartAccountAddress);
+          console.log("Restored EOA Address:", eoaAddress);
+        } catch (addressError) {
+          console.error("Failed to get smart account addresses during restore:", addressError);
+        }
+      }
+
+      // Get Solana address using proper key derivation
+      let solanaAddress: string | undefined;
+      
+      try {
+        // Use the research-based approach for Solana key derivation
+        solanaAddress = await getSolanaAccount(web3authProvider);
+        console.log("Restored Solana address:", solanaAddress);
+      } catch (solanaError) {
+        console.warn("Failed to restore Solana address:", solanaError);
+        solanaAddress = undefined;
+      }
+
+      // Get user info
+      const user = await web3auth.getUserInfo();
+
+      return {
+        providers: { 
+          evmProvider: smartAccountProvider, // Use smart account provider as EVM provider
+          rawProvider: web3authProvider,
+          smartAccountProvider: accountAbstractionProvider,
+        },
+        user,
+        solanaAddress,
+        smartAccountAddress,
+        eoaAddress,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error checking existing session:", error);
+    return null;
+  }
+}
+
 export async function login(): Promise<{
   providers: {
     evmProvider?: any;
@@ -130,11 +215,14 @@ export async function login(): Promise<{
   eoaAddress?: string;
 } | null> {
   try {
-    // Clear any existing session to force fresh authentication
-    if (web3auth.connected) {
-      await web3auth.logout();
+    // Check if user is already connected first
+    const existingSession = await checkExistingSession();
+    if (existingSession) {
+      console.log("Using existing session");
+      return existingSession;
     }
     
+    // If not connected, start fresh authentication
     const web3authProvider = await web3auth.connect();
     if (!web3authProvider) {
       console.error("Web3Auth provider not available.");

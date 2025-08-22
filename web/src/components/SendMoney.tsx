@@ -108,11 +108,9 @@ export function SendMoney({ onBack }: SendMoneyProps) {
 
         if (smartAccount && bundlerClient) {
           hash = await sendErc20WithUsdcGas({
-            smartAccountProvider,
             smartAccount,
             bundlerClient,
             tokenAddress: usdcEvm as any,
-            from: smartAccountAddress as any,
             to: toAddress as any,
             amountTokens: usd.toFixed(6),
           });

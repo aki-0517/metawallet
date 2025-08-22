@@ -1,4 +1,3 @@
-import type { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 import type { Address, Hex } from "viem";
 import { createPublicClient, encodeFunctionData, formatUnits, http, encodePacked } from "viem";
 import { sepolia } from "viem/chains";
@@ -145,7 +144,6 @@ export async function sendErc20(params: {
 
 // New function for smart account batch transactions
 export async function sendErc20Batch(params: {
-  smartAccountProvider: any;
   smartAccount: any;
   bundlerClient: any;
   transactions: Array<{
@@ -154,7 +152,7 @@ export async function sendErc20Batch(params: {
     amountTokens: string;
   }>;
 }): Promise<string> {
-  const { smartAccountProvider, smartAccount, bundlerClient, transactions } = params;
+  const { smartAccount, bundlerClient, transactions } = params;
 
   // Prepare all transaction calls
   const calls = await Promise.all(
@@ -201,15 +199,13 @@ export async function sendErc20Batch(params: {
 
 // New function for USDC gas payment using Circle Paymaster
 export async function sendErc20WithUsdcGas(params: {
-  smartAccountProvider: any;
   smartAccount: any;
   bundlerClient: any;
   tokenAddress: Address;
-  from: Address;
   to: Address;
   amountTokens: string;
 }): Promise<string> {
-  const { smartAccountProvider, smartAccount, bundlerClient, tokenAddress, from, to, amountTokens } = params;
+  const { smartAccount, bundlerClient, tokenAddress, to, amountTokens } = params;
 
   const decimals = await publicClient.readContract({
     address: tokenAddress,

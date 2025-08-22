@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { initializeWeb3Auth, login, logout } from '../lib/web3auth';
+import { initializeWeb3Auth, login, logout, checkExistingSession } from '../lib/web3auth';
 import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 
 interface WalletProviders {
@@ -51,7 +51,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initAuth = async () => {
       try {
         await initializeWeb3Auth();
-        console.log('Web3Auth initialized, but not auto-connecting. User must login manually.');
+        console.log('Web3Auth initialized, checking for existing session...');
+        
+        // Check if user has existing session
+        const existingSession = await checkExistingSession();
+        if (existingSession) {
+          console.log('Found existing session, auto-logging in...');
+          setUser(existingSession.user);
+          setProviders(existingSession.providers);
+          setIsAuthenticated(true);
+          
+          // Set Solana address if available
+          if (existingSession.solanaAddress) {
+            setSolanaAddress(existingSession.solanaAddress);
+          }
+          
+          // Set smart account addresses if available
+          if (existingSession.smartAccountAddress) {
+            setSmartAccountAddress(existingSession.smartAccountAddress);
+          }
+          if (existingSession.eoaAddress) {
+            setEoaAddress(existingSession.eoaAddress);
+          }
+          
+          // Restore username from localStorage
+          const savedUsername = localStorage.getItem('metawallet_username');
+          if (savedUsername) {
+            setUsernameState(savedUsername);
+          }
+          
+          // Skip faucet screen for existing sessions - user has already gone through onboarding
+          setHasFaucetTokensState(true);
+        } else {
+          console.log('No existing session found. User must login manually.');
+        }
       } catch (error) {
         console.error('Error initializing auth:', error);
         
@@ -118,8 +151,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setEoaAddress(result.eoaAddress);
         }
         
-        // Force username registration every time (no localStorage restoration)
-        setUsernameState(null);
+        // Restore username from localStorage if available
+        const savedUsername = localStorage.getItem('metawallet_username');
+        if (savedUsername) {
+          setUsernameState(savedUsername);
+        }
       } else {
         console.warn('Login failed or was cancelled');
       }
