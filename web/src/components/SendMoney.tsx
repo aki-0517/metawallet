@@ -25,6 +25,10 @@ export function SendMoney({ onBack }: SendMoneyProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [transactionSuccess, setTransactionSuccess] = useState<{
+    hash: string;
+    usedGaslessTransfer: boolean;
+  } | null>(null);
 
   useEffect(() => {
     if ((sendMode === 'username' || sendMode === 'contact') && recipient.length > 2) {
@@ -71,6 +75,7 @@ export function SendMoney({ onBack }: SendMoneyProps) {
       return;
     }
 
+    setTransactionSuccess(null);
     setShowConfirmation(true);
   };
 
@@ -144,13 +149,16 @@ export function SendMoney({ onBack }: SendMoneyProps) {
         hash,
       });
       
-      // Reset form after successful send
+      // Reset form and show success
       setRecipient('');
       setAmount('');
       setResolvedAddress(undefined);
       setShowConfirmation(false);
       setError('');
-      alert(`Transaction sent successfully! ${smartAccountAddress ? 'Gas paid with USDC.' : ''}`);
+      setTransactionSuccess({
+        hash,
+        usedGaslessTransfer: !!smartAccountAddress,
+      });
     } catch (error) {
       console.error('Error sending transaction:', error);
       setError('Failed to send transaction. Please try again.');
@@ -174,7 +182,56 @@ export function SendMoney({ onBack }: SendMoneyProps) {
           </button>
         </div>
 
-        {!showConfirmation ? (
+        {transactionSuccess ? (
+          /* Success Screen */
+          <div className="space-y-6 text-center">
+            <div className="w-16 h-16 mx-auto bg-green-100 bg-opacity-20 rounded-full flex items-center justify-center">
+              <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-2">Transfer Successful!</h3>
+              <p className="text-gray-300 mb-4">
+                {transactionSuccess.usedGaslessTransfer 
+                  ? 'Gas fees were paid with USDC' 
+                  : 'Gas fees were paid with ETH'
+                }
+              </p>
+            </div>
+
+            <div className="bg-black bg-opacity-30 rounded-lg p-4">
+              <p className="text-gray-400 text-sm mb-2">Transaction Hash:</p>
+              <div className="flex items-center justify-between bg-white bg-opacity-10 rounded-lg p-3">
+                <span className="text-white font-mono text-sm truncate flex-1">
+                  {transactionSuccess.hash.slice(0, 20)}...{transactionSuccess.hash.slice(-20)}
+                </span>
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${transactionSuccess.hash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-3 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition-colors flex items-center space-x-1"
+                >
+                  <span>Explorer</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setTransactionSuccess(null);
+                onBack();
+              }}
+              className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-6 rounded-lg hover:from-green-700 hover:to-blue-700 transition-all duration-300"
+            >
+              Done
+            </button>
+          </div>
+        ) : !showConfirmation ? (
           <div className="space-y-6">
             {/* Send Mode Toggle */}
             <div>
