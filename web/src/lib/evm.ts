@@ -31,6 +31,16 @@ const ERC20_ABI = [
     ],
     outputs: [{ name: "success", type: "bool" }],
   },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "success", type: "bool" }],
+  },
 ];
 
 const publicClient = createPublicClient({
@@ -213,71 +223,63 @@ export async function sendErc20WithUsdcGas(params: {
   const integerStr = `${intPart}${fracPart}`.replace(/^0+/, "");
   const amountWei = BigInt(integerStr || "0");
 
-  const data: Hex = encodeFunctionData({
-    abi: ERC20_ABI as any,
+  // Circle Paymaster configuration (Sepolia testnet addresses from docs)
+  const paymasterAddress = "0x3BA9A96eE3eFf3A69E2B18886AcF52027EFF8966"; // Circle Paymaster v0.8 on Sepolia
+  const usdcAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"; // USDC on Sepolia
+  
+  // Create the transfer call
+  const transferCall = {
+    to: tokenAddress,
+    value: 0n,
+    abi: ERC20_ABI,
     functionName: "transfer",
     args: [to, amountWei],
-  });
-
-  // Circle Paymaster configuration
-  const paymasterAddress = (import.meta as any).env?.VITE_CIRCLE_PAYMASTER_ADDRESS;
-  const usdcAddress = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS;
-  
-  if (!paymasterAddress || !usdcAddress) {
-    throw new Error("Circle Paymaster or USDC address not configured");
-  }
-
-  // Create paymaster with USDC gas payment
-  const paymaster = {
-    async getPaymasterData() {
-      const permitAmount = 10000000n; // 10 USDC in 6 decimals
-      
-      try {
-        const permitSignature = await signPermit({
-          tokenAddress: usdcAddress,
-          client: publicClient,
-          account: smartAccount,
-          spenderAddress: paymasterAddress,
-          permitAmount: permitAmount,
-        });
-
-        const paymasterData = encodePacked(
-          ["uint8", "address", "uint256", "bytes"],
-          [0, usdcAddress as Address, permitAmount, permitSignature],
-        );
-
-        return {
-          paymaster: paymasterAddress as Address,
-          paymasterData,
-          paymasterVerificationGasLimit: 200000n,
-          paymasterPostOpGasLimit: 15000n,
-          isFinal: true,
-        };
-      } catch (error) {
-        console.error("Failed to create paymaster data:", error);
-        throw error;
-      }
-    },
   };
 
-  // Send transaction with USDC gas payment
-  const userOpHash = await bundlerClient.sendUserOperation({
-    account: smartAccount,
-    paymaster,
-    calls: [
-      {
-        to: tokenAddress,
-        value: 0n,
-        data,
-      },
-    ],
-  });
+  // Create permit for USDC allowance to paymaster
+  const permitAmount = 10000000n; // 10 USDC allowance for gas fees
+  
+  try {
+    const permitSignature = await signPermit({
+      tokenAddress: usdcAddress,
+      client: publicClient,
+      account: smartAccount,
+      spenderAddress: paymasterAddress,
+      permitAmount: permitAmount,
+    });
 
-  // Wait for the user operation receipt to get the transaction hash
-  const receipt = await bundlerClient.waitForUserOperationReceipt({
-    hash: userOpHash,
-  });
+    const paymasterData = encodePacked(
+      ["uint8", "address", "uint256", "bytes"],
+      [0, usdcAddress as Address, permitAmount, permitSignature],
+    );
 
-  return receipt.receipt.transactionHash;
+    // Create approval call for paymaster to spend USDC for gas
+    const approvalCall = {
+      to: usdcAddress,
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [paymasterAddress, permitAmount],
+    };
+
+    // Send batch transaction: approve USDC for gas + transfer
+    const userOpHash = await bundlerClient.sendUserOperation({
+      account: smartAccount,
+      calls: [approvalCall, transferCall],
+      paymaster: paymasterAddress,
+      paymasterData,
+      paymasterVerificationGasLimit: 200000n,
+      paymasterPostOpGasLimit: 15000n,
+    });
+
+    // Wait for the user operation receipt to get the transaction hash
+    const receipt = await bundlerClient.waitForUserOperationReceipt({
+      hash: userOpHash,
+    });
+
+    return receipt.receipt.transactionHash;
+  } catch (error) {
+    console.error("Failed to send transaction with USDC gas:", error);
+    throw error;
+  }
 }
 
