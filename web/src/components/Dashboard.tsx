@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { SendMoney } from './SendMoney';
 import { TransactionHistory } from './TransactionHistory';
+import { PaymentScreen } from './PaymentScreen';
 import { getEvmBalances } from '../lib/evm';
 import { getSolanaBalances } from '../lib/solana';
 
@@ -22,7 +23,7 @@ export function Dashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [showAddresses, setShowAddresses] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'send' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'send' | 'history' | 'payment'>('overview');
 
   useEffect(() => {
     const fetchBalances = async () => {
@@ -112,6 +113,7 @@ export function Dashboard() {
             {[
               { key: 'overview', label: 'Overview', icon: '📊' },
               { key: 'send', label: 'Send', icon: '💸' },
+              { key: 'payment', label: 'Solana Pay', icon: '💳' },
               { key: 'history', label: 'History', icon: '📋' }
             ].map(tab => (
               <button
@@ -160,7 +162,6 @@ export function Dashboard() {
                     <span className="w-6 h-6 bg-gray-600 rounded-full mr-3"></span>
                     Ethereum (Sepolia)
                   </h3>
-                  <span className="text-gray-400 text-sm">70% of total</span>
                 </div>
                 {isLoading ? (
                   <div className="animate-pulse space-y-2">
@@ -184,7 +185,6 @@ export function Dashboard() {
                     <span className="w-6 h-6 bg-purple-600 rounded-full mr-3"></span>
                     Solana (Devnet)
                   </h3>
-                  <span className="text-gray-400 text-sm">30% of total</span>
                 </div>
                 {isLoading ? (
                   <div className="animate-pulse space-y-2">
@@ -257,6 +257,10 @@ export function Dashboard() {
 
         {activeTab === 'history' && (
           <TransactionHistory />
+        )}
+
+        {activeTab === 'payment' && (
+          <PaymentScreen />
         )}
       </main>
     </div>
