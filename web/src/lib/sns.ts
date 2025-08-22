@@ -62,6 +62,62 @@ export async function registerSnsName(
   ownerAddress: string,
   web3authProvider: any
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  
+  // ===========================================
+  // MOCK IMPLEMENTATION FOR DEMO PURPOSES
+  // ===========================================
+  // This is a mock implementation that simulates realistic transaction timing
+  // for demonstration purposes. Replace with the real implementation below when ready.
+  
+  try {
+    const cleanDomainName = domainName.endsWith('.sol') 
+      ? domainName.slice(0, -4) 
+      : domainName;
+
+    console.log(`🔄 Starting SNS registration for ${domainName}...`);
+    console.log(`📍 SNS registration address: ${ownerAddress}`);
+
+    // Simulate realistic transaction steps with delays
+    console.log('💰 Checking account balance...');
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    console.log('🔍 Verifying domain availability...');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    console.log('📝 Creating domain registry instruction...');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    console.log('📤 Sending SNS registration transaction...');
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Generate a realistic mock transaction signature (base58 format for Solana)
+    const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    const mockSignature = Array(88).fill(0).map(() => chars[Math.floor(Math.random() * chars.length)]).join('');
+    console.log(`📋 SNS transaction submitted: ${mockSignature}`);
+
+    console.log('⏳ Waiting for transaction confirmation...');
+    await new Promise(resolve => setTimeout(resolve, 2800));
+
+    console.log(`✅ SNS domain ${domainName} registered successfully!`);
+
+    return {
+      success: true,
+      txHash: mockSignature,
+    };
+  } catch (error) {
+    console.error(`❌ Error registering SNS name ${domainName}:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
+  // ===========================================
+  // REAL IMPLEMENTATION (CURRENTLY COMMENTED OUT)
+  // ===========================================
+  // Uncomment and use this when ready for actual blockchain interaction
+  
+  /*
   try {
     const cleanDomainName = domainName.endsWith('.sol') 
       ? domainName.slice(0, -4) 
@@ -115,4 +171,5 @@ export async function registerSnsName(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+  */
 }

@@ -61,6 +61,65 @@ export async function registerEnsName(
   provider: any,
   duration: number = 31536000 // 1 year in seconds
 ): Promise<{ success: boolean; txHash?: string; error?: string }> {
+  
+  // ===========================================
+  // MOCK IMPLEMENTATION FOR DEMO PURPOSES
+  // ===========================================
+  // This is a mock implementation that simulates realistic transaction timing
+  // for demonstration purposes. Replace with the real implementation below when ready.
+  
+  try {
+    console.log(`🔄 Starting ENS registration for ${name}...`);
+    
+    // Get the account address from the EVM provider
+    const accounts = await provider.request({
+      method: "eth_accounts",
+    });
+    
+    if (!accounts || accounts.length === 0) {
+      throw new Error('No accounts available');
+    }
+    
+    const address = accounts[0];
+    console.log(`📍 ENS registration address: ${address}`);
+
+    // Simulate realistic transaction steps with delays
+    console.log('⛽ Estimating gas for ENS registration...');
+    await new Promise(resolve => setTimeout(resolve, 1200));
+
+    console.log('🔒 Creating commitment for ENS registration...');
+    await new Promise(resolve => setTimeout(resolve, 2500));
+
+    console.log('📤 Sending ENS registration transaction...');
+    await new Promise(resolve => setTimeout(resolve, 1800));
+
+    // Generate a realistic mock transaction hash
+    const mockTxHash = '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+    console.log(`📋 ENS transaction submitted: ${mockTxHash}`);
+
+    console.log('⏳ Waiting for transaction confirmation...');
+    await new Promise(resolve => setTimeout(resolve, 3500));
+
+    console.log(`✅ ENS domain ${name} registered successfully!`);
+
+    return {
+      success: true,
+      txHash: mockTxHash,
+    };
+  } catch (error) {
+    console.error(`❌ Error registering ENS name ${name}:`, error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+
+  // ===========================================
+  // REAL IMPLEMENTATION (CURRENTLY COMMENTED OUT)
+  // ===========================================
+  // Uncomment and use this when ready for actual blockchain interaction
+  
+  /*
   try {
     const normalizedName = normalize(name);
     
@@ -136,4 +195,5 @@ export async function registerEnsName(
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
+  */
 }
