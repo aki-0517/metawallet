@@ -2,6 +2,9 @@ import { createPublicClient, http, formatEther } from 'viem';
 import { sepolia } from 'viem/chains';
 import { Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { getSolanaKeypair, getSolanaConnection } from './solanaRPC';
+import { getEvmBalances } from './evm';
+import { getSolanaBalances } from './solana';
+import type { Address } from 'viem';
 
 const publicClient = createPublicClient({
   chain: sepolia,
@@ -49,4 +52,66 @@ export async function hasMinimumBalances(
     ethBalance,
     solBalance,
   };
+}
+
+// CCTP統合用の合計USDC残高取得機能
+export async function getTotalUsdcBalance(params: {
+  evmAddress: string;
+  solanaAddress: string;
+  usdcEvmAddress: string;
+  usdcSolanaMint: string;
+}): Promise<{
+  evmBalance: number;
+  solanaBalance: number;
+  totalBalance: number;
+}> {
+  const { evmAddress, solanaAddress, usdcEvmAddress, usdcSolanaMint } = params;
+  
+  console.log('getTotalUsdcBalance called with:', {
+    evmAddress,
+    solanaAddress,
+    usdcEvmAddress,
+    usdcSolanaMint,
+  });
+  
+  const [evmBalances, solanaBalances] = await Promise.all([
+    getEvmBalances({
+      walletAddress: evmAddress as Address,
+      usdcAddress: usdcEvmAddress as Address,
+    }),
+    getSolanaBalances({
+      owner: solanaAddress,
+      usdcMint: usdcSolanaMint,
+    }),
+  ]);
+  
+  const totalBalance = evmBalances.usdc + solanaBalances.usdc;
+  
+  console.log('Total USDC balance result:', {
+    evmBalance: evmBalances.usdc,
+    solanaBalance: solanaBalances.usdc,
+    totalBalance,
+  });
+  
+  return {
+    evmBalance: evmBalances.usdc,
+    solanaBalance: solanaBalances.usdc,
+    totalBalance,
+  };
+}
+
+// ブリッジが必要かどうかを判定
+export function shouldUseBridge(params: {
+  requiredAmount: number;
+  evmBalance: number;
+  solanaBalance: number;
+}): boolean {
+  const { requiredAmount, evmBalance, solanaBalance } = params;
+  
+  // EVM残高が不足しているが、Solana残高で補えるかどうか
+  const evmInsufficient = evmBalance < requiredAmount;
+  const totalSufficient = (evmBalance + solanaBalance) >= requiredAmount;
+  const solanaHasSufficient = solanaBalance >= requiredAmount;
+  
+  return evmInsufficient && totalSufficient && solanaHasSufficient;
 }

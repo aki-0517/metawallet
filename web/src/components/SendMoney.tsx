@@ -3,6 +3,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { resolveEnsAddress } from '../lib/ens';
 import { sendErc20, sendErc20WithUsdcGas } from '../lib/evm';
 import { addTransaction } from '../lib/txStore';
+import { getTotalUsdcBalance, shouldUseBridge } from '../lib/balances';
+import { bridgeFromSolanaToEvm, isBridgeAvailable } from '../lib/cctp';
 
 interface SendMoneyProps {
   onBack: () => void;
@@ -11,7 +13,7 @@ interface SendMoneyProps {
 type SendMode = 'username' | 'address' | 'contact';
 
 export function SendMoney({ onBack }: SendMoneyProps) {
-  const { evmAddress, providers, smartAccountAddress } = useAuth();
+  const { evmAddress, providers, smartAccountAddress, solanaAddress } = useAuth();
   const [sendMode, setSendMode] = useState<SendMode>('username');
   const [contacts] = useState([
     // { id: '1', username: 'alice', lastTransactionDate: new Date(Date.now() - 1000 * 60 * 60 * 24) },
@@ -28,6 +30,12 @@ export function SendMoney({ onBack }: SendMoneyProps) {
   const [transactionSuccess, setTransactionSuccess] = useState<{
     hash: string;
     usedGaslessTransfer: boolean;
+    usedBridge?: boolean;
+  } | null>(null);
+  const [totalBalance, setTotalBalance] = useState<{
+    evmBalance: number;
+    solanaBalance: number;
+    totalBalance: number;
   } | null>(null);
 
   useEffect(() => {
@@ -59,6 +67,33 @@ export function SendMoney({ onBack }: SendMoneyProps) {
     }
   }, [recipient, sendMode]);
 
+  // 残高取得
+  useEffect(() => {
+    const fetchTotalBalance = async () => {
+      if (evmAddress && solanaAddress) {
+        const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS;
+        const usdcSolana = (import.meta as any).env?.VITE_USDC_SOLANA_MINT;
+        
+        if (usdcEvm && usdcSolana) {
+          try {
+            const balance = await getTotalUsdcBalance({
+              evmAddress,
+              solanaAddress,
+              usdcEvmAddress: usdcEvm,
+              usdcSolanaMint: usdcSolana,
+            });
+            setTotalBalance(balance);
+          } catch (error) {
+            console.error('Error fetching total balance:', error);
+            setTotalBalance(null);
+          }
+        }
+      }
+    };
+    
+    fetchTotalBalance();
+  }, [evmAddress, solanaAddress]);
+
   const handleContactSelect = (username: string) => {
     setRecipient(username);
     setSendMode('username');
@@ -84,13 +119,7 @@ export function SendMoney({ onBack }: SendMoneyProps) {
     setError('');
 
     try {
-      const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string | undefined;
-      
-      if (!providers?.evmProvider || !evmAddress || !usdcEvm) {
-        throw new Error('Ethereum provider not available');
-      }
-
-      const now = Date.now();
+      const usdcEvm = (import.meta as any).env?.VITE_USDC_SEPOLIA_ADDRESS as string;
       const usd = parseFloat(amount);
       const toAddress = sendMode === 'username' ? resolvedAddress : recipient;
 
@@ -98,24 +127,74 @@ export function SendMoney({ onBack }: SendMoneyProps) {
         throw new Error('Recipient address not found');
       }
 
+      // 残高チェック
+      if (!totalBalance) {
+        throw new Error('Unable to fetch balance');
+      }
+
+      if (totalBalance.totalBalance < usd) {
+        throw new Error(`Insufficient balance. Available: ${totalBalance.totalBalance.toFixed(2)} USDC`);
+      }
+
       let hash: string;
+      let usedBridge = false;
 
-      // Use USDC gas payment if smart account is available
-      if (providers.smartAccountProvider && smartAccountAddress) {
-        const smartAccountProvider = providers.smartAccountProvider;
-        const smartAccount = smartAccountProvider.smartAccount;
-        const bundlerClient = smartAccountProvider.bundlerClient;
+      // EVM残高が不足している場合、Solanaからブリッジを検討
+      if (isBridgeAvailable() && shouldUseBridge({
+        requiredAmount: usd,
+        evmBalance: totalBalance.evmBalance,
+        solanaBalance: totalBalance.solanaBalance,
+      })) {
+        console.log('EVM balance insufficient, bridging from Solana...');
+        
+        if (!providers?.rawProvider || !providers?.evmProvider || !solanaAddress) {
+          throw new Error('Solana or EVM provider not available for bridging');
+        }
 
-        if (smartAccount && bundlerClient) {
-          hash = await sendErc20WithUsdcGas({
-            smartAccount,
-            bundlerClient,
-            tokenAddress: usdcEvm as any,
-            to: toAddress as any,
-            amountTokens: usd.toFixed(6),
-          });
+        const { burnTx, mintTx } = await bridgeFromSolanaToEvm({
+          solanaProvider: providers.rawProvider,
+          amount: usd,
+          destinationEvmAddress: evmAddress!,
+          solanaAddress,
+          evmProvider: providers.evmProvider,
+        });
+
+        // ブリッジ完了後、通常の送金を実行
+        hash = await sendErc20({
+          provider: providers.evmProvider,
+          tokenAddress: usdcEvm as any,
+          from: evmAddress as any,
+          to: toAddress as any,
+          amountTokens: usd.toFixed(6),
+        });
+
+        usedBridge = true;
+      } else {
+        // 通常の送金フロー
+        if (providers.smartAccountProvider && smartAccountAddress) {
+          // Smart Account使用
+          const smartAccountProvider = providers.smartAccountProvider;
+          const smartAccount = smartAccountProvider.smartAccount;
+          const bundlerClient = smartAccountProvider.bundlerClient;
+
+          if (smartAccount && bundlerClient) {
+            hash = await sendErc20WithUsdcGas({
+              smartAccount,
+              bundlerClient,
+              tokenAddress: usdcEvm as any,
+              to: toAddress as any,
+              amountTokens: usd.toFixed(6),
+            });
+          } else {
+            hash = await sendErc20({
+              provider: providers.evmProvider,
+              tokenAddress: usdcEvm as any,
+              from: evmAddress as any,
+              to: toAddress as any,
+              amountTokens: usd.toFixed(6),
+            });
+          }
         } else {
-          // Fallback to regular transaction
           hash = await sendErc20({
             provider: providers.evmProvider,
             tokenAddress: usdcEvm as any,
@@ -124,30 +203,22 @@ export function SendMoney({ onBack }: SendMoneyProps) {
             amountTokens: usd.toFixed(6),
           });
         }
-      } else {
-        // Fallback to regular transaction
-        hash = await sendErc20({
-          provider: providers.evmProvider,
-          tokenAddress: usdcEvm as any,
-          from: evmAddress as any,
-          to: toAddress as any,
-          amountTokens: usd.toFixed(6),
-        });
       }
 
+      // トランザクション記録
       addTransaction({
         id: `${hash}`,
         type: 'sent',
         counterparty: sendMode === 'username' ? `@${recipient}` : toAddress,
         amount: usd,
         currency: 'USDC',
-        chain: 'ethereum',
+        chain: usedBridge ? 'solana-ethereum' : 'ethereum',
         status: 'completed',
-        timestamp: now,
+        timestamp: Date.now(),
         hash,
       });
-      
-      // Reset form and show success
+
+      // 成功処理
       setRecipient('');
       setAmount('');
       setResolvedAddress(undefined);
@@ -156,10 +227,12 @@ export function SendMoney({ onBack }: SendMoneyProps) {
       setTransactionSuccess({
         hash,
         usedGaslessTransfer: !!smartAccountAddress,
+        usedBridge,
       });
+
     } catch (error) {
       console.error('Error sending transaction:', error);
-      setError('Failed to send transaction. Please try again.');
+      setError(error instanceof Error ? error.message : 'Failed to send transaction');
     } finally {
       setIsLoading(false);
     }
@@ -180,6 +253,20 @@ export function SendMoney({ onBack }: SendMoneyProps) {
           </button>
         </div>
 
+        {/* 残高表示 */}
+        {totalBalance && (
+          <div className="mb-6 p-4 bg-blue-500 bg-opacity-20 rounded-lg">
+            <h3 className="text-lg font-semibold text-white mb-2">Available Balance</h3>
+            <div className="space-y-1 text-sm text-gray-300">
+              <div>EVM: {totalBalance.evmBalance.toFixed(2)} USDC</div>
+              <div>Solana: {totalBalance.solanaBalance.toFixed(2)} USDC</div>
+              <div className="text-white font-medium">
+                Total: {totalBalance.totalBalance.toFixed(2)} USDC
+              </div>
+            </div>
+          </div>
+        )}
+
         {transactionSuccess ? (
           /* Success Screen */
           <div className="space-y-6 text-center">
@@ -191,12 +278,19 @@ export function SendMoney({ onBack }: SendMoneyProps) {
             
             <div>
               <h3 className="text-2xl font-bold text-white mb-2">Transfer Successful!</h3>
-              <p className="text-gray-300 mb-4">
-                {transactionSuccess.usedGaslessTransfer 
-                  ? 'Gas fees were paid with USDC' 
-                  : 'Gas fees were paid with ETH'
-                }
-              </p>
+              <div className="space-y-2 mb-4">
+                <p className="text-gray-300">
+                  {transactionSuccess.usedGaslessTransfer 
+                    ? 'Gas fees were paid with USDC' 
+                    : 'Gas fees were paid with ETH'
+                  }
+                </p>
+                {transactionSuccess.usedBridge && (
+                  <p className="text-blue-300 text-sm">
+                    ⚡ Automatic bridge from Solana to Ethereum used
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="bg-black bg-opacity-30 rounded-lg p-4">
