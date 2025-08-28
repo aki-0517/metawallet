@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getTransactions } from '../lib/txStore';
+import { getUserAllTransactions, getTransactions } from '../lib/txStore';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Transaction {
   id: string;
@@ -15,14 +16,94 @@ interface Transaction {
 }
 
 export function TransactionHistory() {
+  const { evmAddress, solanaAddress, smartAccountAddress, eoaAddress } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
 
+  // Get user's wallet addresses for filtering
+  const getUserAddresses = (): string[] => {
+    return [
+      evmAddress,
+      solanaAddress, 
+      smartAccountAddress,
+      eoaAddress
+    ].filter(Boolean).map(addr => addr?.toLowerCase());
+  };
+
+  // Helper function to check if transaction involves user's wallet
+  const isUserTransaction = (tx: any): boolean => {
+    const userAddresses = getUserAddresses();
+    
+    // If no user addresses are available yet, don't show any transactions
+    if (userAddresses.length === 0) {
+      return false;
+    }
+    
+    // For sent transactions: the user should be the one sending FROM their address
+    // The counterparty is the recipient, so we don't need to check counterparty
+    // For received transactions: the user should be the one receiving TO their address
+    // The counterparty is the sender, so we need to check if the transaction was TO user's address
+    
+    // Since the transaction structure doesn't store the user's address explicitly,
+    // and all stored transactions are supposed to be from the user's perspective,
+    // we need a better way to verify. For now, let's check if the counterparty is NOT 
+    // one of the user's addresses (meaning it's a transaction with external parties)
+    
+    if (tx.counterparty) {
+      const counterpartyLower = tx.counterparty.toLowerCase();
+      
+      // If counterparty is a username (starts with @), it's valid
+      if (counterpartyLower.startsWith('@')) {
+        return true;
+      }
+      
+      // If counterparty is one of our own addresses, it might be a self-transaction or invalid
+      const isCounterpartySelf = userAddresses.includes(counterpartyLower);
+      
+      // Show transactions where counterparty is NOT ourselves (external transactions)
+      return !isCounterpartySelf;
+    }
+    
+    return true;
+  };
+
   useEffect(() => {
     setIsLoading(true);
-    const list = getTransactions();
-    const normalized: Transaction[] = list.map((t) => ({
+    
+    const userAddresses = getUserAddresses();
+    
+    // If no user addresses are available, show empty list
+    if (userAddresses.length === 0) {
+      setTransactions([]);
+      setIsLoading(false);
+      return;
+    }
+    
+    // Get transactions from user-specific storage
+    let list = getUserAllTransactions(userAddresses);
+    
+    // Also check legacy global storage for backward compatibility
+    const legacyTransactions = getTransactions();
+    if (legacyTransactions.length > 0) {
+      // Filter legacy transactions to only include user's transactions
+      const userLegacyTransactions = legacyTransactions.filter(isUserTransaction);
+      // Merge with user-specific transactions, removing duplicates
+      const allTransactions = [...list, ...userLegacyTransactions];
+      const uniqueTransactions = allTransactions.reduce((acc, tx) => {
+        const existing = acc.find(t => t.hash === tx.hash);
+        if (!existing) {
+          acc.push(tx);
+        }
+        return acc;
+      }, [] as typeof list);
+      list = uniqueTransactions.sort((a, b) => b.timestamp - a.timestamp);
+    }
+    
+    // Additional filtering to ensure only user transactions are shown
+    const userTransactions = list.filter(isUserTransaction);
+    
+    const normalized: Transaction[] = userTransactions.map((t) => ({
       id: t.id,
       type: t.type,
       recipient: t.type === 'sent' ? t.counterparty : undefined,
@@ -36,7 +117,7 @@ export function TransactionHistory() {
     }));
     setTransactions(normalized);
     setIsLoading(false);
-  }, []);
+  }, [evmAddress, solanaAddress, smartAccountAddress, eoaAddress]);
 
   const filteredTransactions = transactions.filter(tx => {
     if (filter === 'all') return true;

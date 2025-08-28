@@ -216,6 +216,7 @@ export function SendMoney({ onBack }: SendMoneyProps) {
         status: 'completed',
         timestamp: Date.now(),
         hash,
+        userAddress: smartAccountAddress || evmAddress, // Add user's address who sent the transaction
       });
 
       // 成功処理
